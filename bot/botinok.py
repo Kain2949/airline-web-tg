@@ -25,7 +25,7 @@ from telegram.ext import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = PROJECT_ROOT / "airline_app.db"
 
-BOT_TOKEN = os.getenv("8596097444:AAHmyMfDVeSkhBGkXxbqF23H5622hquS-vM", "").strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 DB_PATH = Path(os.getenv("DB_PATH", str(DEFAULT_DB_PATH))).resolve()
 
 POLL_SECONDS = float(os.getenv("BOT_POLL_SECONDS", "2.0"))
