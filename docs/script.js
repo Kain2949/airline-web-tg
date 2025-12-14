@@ -1,343 +1,322 @@
 (() => {
-  // ==============================
-  // API BASE
-  // ==============================
-  // Удобно: один раз открываешь сайт так:
-  // https://kain2949.github.io/airline-web-tg/?api=https://xxxx.ngrok-free.dev
-  // и оно сохранится в localStorage.
-  const API_BASE = (() => {
-    const qp = new URLSearchParams(location.search);
-    const fromQ = (qp.get("api") || "").trim();
-    if (fromQ) {
-      const clean = normalizeBase(fromQ);
-      localStorage.setItem("api_base", clean);
-      return clean;
+  "use strict";
+
+  const el = (id) => document.getElementById(id);
+
+  const toast = el("toast");
+  const toastTitle = el("toastTitle");
+  const toastText = el("toastText");
+  const toastClose = el("toastClose");
+
+  const apiModal = el("apiModal");
+  const apiInput = el("apiInput");
+  const apiCancel = el("apiCancel");
+  const apiSave = el("apiSave");
+
+  const tgUsername = el("tgUsername");
+  const btnAuthStart = el("btnAuthStart");
+
+  const lastName = el("lastName");
+  const firstName = el("firstName");
+  const middleName = el("middleName");
+  const passportId = el("passportId");
+  const birthDate = el("birthDate");
+  const phone = el("phone");
+  const email = el("email");
+  const regCode = el("regCode");
+  const btnRegister = el("btnRegister");
+
+  const langBtn = el("langBtn");
+
+  // -------- API base (ngrok) without leaking it into the page -----------
+  function normalizeBase(s) {
+    return (s || "").trim().replace(/\/+$/, "");
+  }
+
+  function getApiBase() {
+    const u = new URL(window.location.href);
+    const qp = u.searchParams.get("api");
+    if (qp) {
+      const base = normalizeBase(qp);
+      localStorage.setItem("api_base", base);
+      return base;
     }
-    const saved = (localStorage.getItem("api_base") || "").trim();
-    if (saved) return normalizeBase(saved);
+    const stored = localStorage.getItem("api_base");
+    if (stored) return normalizeBase(stored);
 
-    // запасной вариант — ПОДСТАВЬ СВОЙ NGROK, если не хочешь через ?api=
-    return "https://kristan-labored-earsplittingly.ngrok-free.dev";
-  })();
+    // local dev
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+    return null;
+  }
 
-  // ==============================
-  // i18n
-  // ==============================
-  const I18N = {
+  let API_BASE = getApiBase();
+
+  function showApiModal() {
+    apiModal.hidden = false;
+    apiInput.value = "";
+    apiInput.focus();
+  }
+
+  function hideApiModal() {
+    apiModal.hidden = true;
+  }
+
+  apiCancel?.addEventListener("click", () => {
+    hideApiModal();
+    showToast("Ошибка", "Без адреса сервера ничего не заработает. Укажи ngrok URL.");
+  });
+
+  apiSave?.addEventListener("click", () => {
+    const v = normalizeBase(apiInput.value);
+    if (!v.startsWith("http")) {
+      showToast("Ошибка", "Это не похоже на URL. Пример: https://xxxx.ngrok-free.dev");
+      return;
+    }
+    localStorage.setItem("api_base", v);
+    API_BASE = v;
+    hideApiModal();
+    showToast("Ок", "Backend URL сохранён.");
+  });
+
+  // -------------------- UI: toast -----------------------
+  let toastTimer = null;
+  function showToast(title, text) {
+    toastTitle.textContent = title;
+    toastText.textContent = text;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast.hidden = true), 4500);
+  }
+
+  toastClose?.addEventListener("click", () => (toast.hidden = true));
+
+  // -------------------- i18n ----------------------------
+  const dict = {
     ru: {
       title: "Авиакомпания: регистрация и бронирование",
-      tgTitle: "1. Подтверждение через Telegram",
+      step1: "1. Подтверждение через Telegram",
       tgLabel: "Telegram @username",
-      tgBtn: "Получить код",
-      regTitle: "2. Регистрация пассажира",
-      lnLabel: "Фамилия",
-      fnLabel: "Имя",
-      mnLabel: "Отчество",
-      pidLabel: "Серия и номер паспорта",
-      bdLabel: "Дата рождения",
-      phLabel: "Телефон",
-      emLabel: "E-mail",
-      codeLabel: "Код из Telegram (регистрация)",
-      regBtn: "Завершить регистрацию",
-      s_api: (v) => `API: ${v}`,
-      s_need_user: "Впиши Telegram @username.",
-      s_sent: "Код отправлен в Telegram. Проверь чат с ботом.",
-      s_need_code: "Впиши код из Telegram.",
-      s_bad_user: "Нужен @username (можно без @, я сама добавлю).",
-      s_reg_ok: "Регистрация успешна. Теперь можешь бронировать.",
+      tgHint: "Например: @Kain_cr",
+      getCode: "Получить код",
+      step2: "2. Регистрация пассажира",
+      last: "Фамилия",
+      first: "Имя",
+      middle: "Отчество",
+      passport: "Серия и номер паспорта",
+      passHint: "Формат: AA0000000",
+      birth: "Дата рождения",
+      birthHint: "Выбери дату в календаре",
+      phone: "Телефон",
+      email: "E-mail",
+      regCode: "Код из Telegram (регистрация)",
+      regHint: "6 цифр",
+      finishReg: "Завершить регистрацию",
+      msgSent: "Код отправлен в Telegram.",
+      msgNoServer: "Сервер не настроен. Нужен ngrok URL.",
+      msgBadUser: "Введи корректный @username.",
+      msgFail: "Не удалось связаться с сервером.",
+      msgOk: "Готово.",
     },
     en: {
       title: "Airline: registration & booking",
-      tgTitle: "1. Telegram verification",
+      step1: "1. Telegram verification",
       tgLabel: "Telegram @username",
-      tgBtn: "Get code",
-      regTitle: "2. Passenger registration",
-      lnLabel: "Last name",
-      fnLabel: "First name",
-      mnLabel: "Middle name",
-      pidLabel: "Passport ID",
-      bdLabel: "Birth date",
-      phLabel: "Phone",
-      emLabel: "E-mail",
-      codeLabel: "Telegram code (registration)",
-      regBtn: "Complete registration",
-      s_api: (v) => `API: ${v}`,
-      s_need_user: "Enter Telegram @username.",
-      s_sent: "Code sent to Telegram. Check the bot chat.",
-      s_need_code: "Enter the Telegram code.",
-      s_bad_user: "Need @username (you can omit @ — I'll add it).",
-      s_reg_ok: "Registration completed. You can book now.",
+      tgHint: "Example: @Kain_cr",
+      getCode: "Get code",
+      step2: "2. Passenger registration",
+      last: "Last name",
+      first: "First name",
+      middle: "Middle name",
+      passport: "Passport ID",
+      passHint: "Format: AA0000000",
+      birth: "Birth date",
+      birthHint: "Pick a date in the calendar",
+      phone: "Phone",
+      email: "E-mail",
+      regCode: "Telegram code (registration)",
+      regHint: "6 digits",
+      finishReg: "Finish registration",
+      msgSent: "Code sent to Telegram.",
+      msgNoServer: "Backend is not set. You need an ngrok URL.",
+      msgBadUser: "Enter a valid @username.",
+      msgFail: "Failed to reach the server.",
+      msgOk: "Done.",
     },
   };
 
-  // ==============================
-  // DOM helpers
-  // ==============================
-  const $ = (id) => document.getElementById(id);
+  function getLang() {
+    return localStorage.getItem("lang") || "ru";
+  }
+  function setLang(v) {
+    localStorage.setItem("lang", v);
+  }
+  function applyLang() {
+    const L = dict[getLang()];
+    el("t_title").textContent = L.title;
+    el("t_step1").textContent = L.step1;
+    el("t_tgLabel").textContent = L.tgLabel;
+    el("t_tgHint").textContent = L.tgHint;
+    el("t_getCode").textContent = L.getCode;
 
-  const el = {
-    langBtn: null,
+    el("t_step2").textContent = L.step2;
+    el("t_last").textContent = L.last;
+    el("t_first").textContent = L.first;
+    el("t_middle").textContent = L.middle;
+    el("t_passport").textContent = L.passport;
+    el("t_passHint").textContent = L.passHint;
+    el("t_birth").textContent = L.birth;
+    el("t_birthHint").textContent = L.birthHint;
+    el("t_phone").textContent = L.phone;
+    el("t_email").textContent = L.email;
+    el("t_regCode").textContent = L.regCode;
+    el("t_regHint").textContent = L.regHint;
+    el("t_finishReg").textContent = L.finishReg;
 
-    tgUsername: null,
-    btnGetCode: null,
-    tgStatus: null,
+    langBtn.textContent = getLang() === "ru" ? "EN" : "RU";
+  }
 
-    lastName: null,
-    firstName: null,
-    middleName: null,
-    passportId: null,
-    birthDate: null,
-    phone: null,
-    email: null,
-    regCode: null,
-    btnRegister: null,
-    regStatus: null,
+  langBtn?.addEventListener("click", () => {
+    const next = getLang() === "ru" ? "en" : "ru";
+    setLang(next);
+    applyLang();
+  });
 
-    globalStatus: null,
-  };
+  // -------------------- helpers -------------------------
+  function cleanUsername(s) {
+    s = (s || "").trim();
+    if (!s) return "";
+    if (!s.startsWith("@")) s = "@" + s;
+    // very basic validation
+    if (!/^@[A-Za-z0-9_]{5,32}$/.test(s)) return "";
+    return s;
+  }
 
-  let lang = (localStorage.getItem("lang") || "ru").toLowerCase();
-  if (!I18N[lang]) lang = "ru";
+  async function fetchJson(path, payload) {
+    if (!API_BASE) throw new Error("NO_API_BASE");
 
-  document.addEventListener("DOMContentLoaded", init);
+    const url = API_BASE + path;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
 
-  function init() {
-    // подцепляем элементы (и НЕ падаем, если что-то не так)
-    el.langBtn = $("langBtn");
-    el.tgUsername = $("tgUsername");
-    el.btnGetCode = $("btnGetCode");
-    el.tgStatus = $("tgStatus");
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        mode: "cors",
+        signal: ctrl.signal,
+      });
 
-    el.lastName = $("lastName");
-    el.firstName = $("firstName");
-    el.middleName = $("middleName");
-    el.passportId = $("passportId");
-    el.birthDate = $("birthDate");
-    el.phone = $("phone");
-    el.email = $("email");
-    el.regCode = $("regCode");
-    el.btnRegister = $("btnRegister");
-    el.regStatus = $("regStatus");
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
 
-    el.globalStatus = $("globalStatus");
+      if (!res.ok) {
+        const err = new Error("HTTP_" + res.status);
+        err.status = res.status;
+        err.data = data;
+        // детали в консоль, не в UI
+        console.error("API error:", res.status, data || text);
+        throw err;
+      }
+      return data;
+    } finally {
+      clearTimeout(t);
+    }
+  }
 
-    // если что-то ключевое отсутствует — покажем понятно, а не "null.addEventListener"
-    const must = [
-      ["langBtn", el.langBtn],
-      ["tgUsername", el.tgUsername],
-      ["btnGetCode", el.btnGetCode],
-      ["btnRegister", el.btnRegister],
-    ];
-    const missing = must.filter(([, v]) => !v).map(([k]) => k);
-    if (missing.length) {
-      console.error("DOM missing:", missing);
-      setGlobal(`DOM missing: ${missing.join(", ")} (index.html != script.js)`, "err");
+  // -------------------- actions -------------------------
+  btnAuthStart?.addEventListener("click", async () => {
+    const L = dict[getLang()];
+
+    if (!API_BASE) {
+      showToast("Backend", L.msgNoServer);
+      showApiModal();
       return;
     }
 
-    // язык
-    el.langBtn.addEventListener("click", () => {
-      lang = lang === "ru" ? "en" : "ru";
-      localStorage.setItem("lang", lang);
-      applyI18n();
-    });
-
-    // кнопки
-    el.btnGetCode.addEventListener("click", onGetCode);
-    el.btnRegister.addEventListener("click", onRegister);
-
-    // первичная отрисовка
-    applyI18n();
-    setGlobal(I18N[lang].s_api(API_BASE), "ok");
-  }
-
-  function applyI18n() {
-    const dict = I18N[lang];
-    document.documentElement.lang = lang;
-
-    // поменять тексты
-    document.querySelectorAll("[data-i18n]").forEach((node) => {
-      const key = node.getAttribute("data-i18n");
-      const val = dict[key];
-      if (typeof val === "string") node.textContent = val;
-    });
-
-    // кнопка языка
-    if (el.langBtn) el.langBtn.textContent = lang === "ru" ? "EN" : "RU";
-  }
-
-  // ==============================
-  // Actions
-  // ==============================
-  async function onGetCode() {
-    clearStatus();
-
-    const u = normalizeUsername(el.tgUsername.value);
-    if (!u) return setTg(I18N[lang].s_need_user, "err");
-    if (!looksLikeUsername(u)) return setTg(I18N[lang].s_bad_user, "err");
-
-    disable(el.btnGetCode, true);
-
-    try {
-      const res = await apiPost("/api/auth/start", { username: u });
-      if (!res.ok) {
-        return setTg(formatApiError(res), "err");
-      }
-      setTg(I18N[lang].s_sent, "ok");
-    } catch (e) {
-      console.error(e);
-      setTg(`Ошибка сети: ${String(e)}`, "err");
-    } finally {
-      disable(el.btnGetCode, false);
+    const u = cleanUsername(tgUsername.value);
+    if (!u) {
+      showToast("Ошибка", L.msgBadUser);
+      tgUsername.focus();
+      return;
     }
-  }
 
-  async function onRegister() {
-    clearStatus();
+    btnAuthStart.disabled = true;
+    try {
+      // IMPORTANT: FastAPI ждёт именно эти поля (судя по твоему 422)
+      await fetchJson("/api/auth/start", {
+        telegram_username: u,
+        purpose: "registration",
+      });
+      showToast("Ок", L.msgSent);
+    } catch (e) {
+      if (e && e.message === "NO_API_BASE") {
+        showToast("Backend", L.msgNoServer);
+        showApiModal();
+      } else if (e && e.status === 422) {
+        showToast("Ошибка", "Сервер не принял данные. Проверь @username.");
+      } else {
+        showToast("Ошибка", L.msgFail);
+      }
+    } finally {
+      btnAuthStart.disabled = false;
+    }
+  });
 
-    const u = normalizeUsername(el.tgUsername.value);
-    if (!u || !looksLikeUsername(u)) return setReg(I18N[lang].s_need_user, "err");
+  btnRegister?.addEventListener("click", async () => {
+    const L = dict[getLang()];
+    if (!API_BASE) {
+      showToast("Backend", L.msgNoServer);
+      showApiModal();
+      return;
+    }
 
-    const code = (el.regCode.value || "").trim();
-    if (!code) return setReg(I18N[lang].s_need_code, "err");
+    const u = cleanUsername(tgUsername.value);
+    if (!u) { showToast("Ошибка", L.msgBadUser); tgUsername.focus(); return; }
 
     const payload = {
-      username: u,
-      code: code,
-
-      last_name: (el.lastName.value || "").trim(),
-      first_name: (el.firstName.value || "").trim(),
-      middle_name: (el.middleName.value || "").trim() || null,
-
-      passport_id: (el.passportId.value || "").trim(),
-      birth_date: (el.birthDate.value || "").trim(), // yyyy-mm-dd
-      phone: (el.phone.value || "").trim(),
-      email: (el.email.value || "").trim(),
+      telegram_username: u,
+      code: (regCode.value || "").trim(),
+      last_name: (lastName.value || "").trim(),
+      first_name: (firstName.value || "").trim(),
+      middle_name: (middleName.value || "").trim() || null,
+      passport_id: (passportId.value || "").trim(),
+      birth_date: birthDate.value || null, // yyyy-mm-dd
+      phone: (phone.value || "").trim(),
+      email: (email.value || "").trim(),
     };
 
-    // минимальная валидация на фронте (не “душу”, но глупости режу)
-    const miss = [];
-    if (!payload.last_name) miss.push("last name");
-    if (!payload.first_name) miss.push("first name");
-    if (!payload.passport_id) miss.push("passport");
-    if (!payload.birth_date) miss.push("birth date");
-    if (!payload.phone) miss.push("phone");
-    if (!payload.email) miss.push("email");
-    if (miss.length) return setReg(`Заполни поля: ${miss.join(", ")}`, "err");
+    // мягкая валидация без истерик
+    if (!payload.last_name || !payload.first_name || !payload.passport_id || !payload.birth_date || !payload.phone || !payload.email || !payload.code) {
+      showToast("Ошибка", "Заполни обязательные поля и введи код.");
+      return;
+    }
 
-    disable(el.btnRegister, true);
-
+    btnRegister.disabled = true;
     try {
-      // ВАЖНО: если у тебя в backend другой путь — меняешь только ЭТУ строку.
-      const res = await apiPost("/api/passengers/register", payload);
-
-      if (!res.ok) {
-        // если вдруг у тебя эндпоинт называется иначе, сразу увидишь 404 здесь.
-        return setReg(formatApiError(res), "err");
-      }
-
-      setReg(I18N[lang].s_reg_ok, "ok");
+      // Если у тебя эндпоинт называется иначе — поменяй только ЭТУ строку.
+      await fetchJson("/api/register", payload);
+      showToast("Ок", L.msgOk);
     } catch (e) {
-      console.error(e);
-      setReg(`Ошибка сети: ${String(e)}`, "err");
+      if (e && e.status === 422) {
+        showToast("Ошибка", "Сервер ругается на поля. Проверь формат данных.");
+      } else {
+        showToast("Ошибка", L.msgFail);
+      }
     } finally {
-      disable(el.btnRegister, false);
+      btnRegister.disabled = false;
     }
-  }
+  });
 
-  // ==============================
-  // API helpers
-  // ==============================
-  async function apiPost(path, body) {
-    const url = API_BASE + path;
-    const r = await fetch(url, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  // init
+  applyLang();
 
-    const data = await safeRead(r);
-    return { ok: r.ok, status: r.status, data, url };
-  }
-
-  async function safeRead(resp) {
-    const ct = (resp.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("application/json")) {
-      try { return await resp.json(); } catch { return null; }
-    }
-    try { return await resp.text(); } catch { return null; }
-  }
-
-  function formatApiError(res) {
-    const d = res.data;
-    if (typeof d === "string" && d.trim()) return `HTTP ${res.status}: ${d}`;
-    if (d && typeof d === "object") {
-      // fastapi часто отдаёт {detail: "..."} или массив ошибок
-      if (d.detail) return `HTTP ${res.status}: ${stringifyDetail(d.detail)}`;
-      return `HTTP ${res.status}: ${JSON.stringify(d)}`;
-    }
-    return `HTTP ${res.status}: ошибка`;
-  }
-
-  function stringifyDetail(detail) {
-    if (typeof detail === "string") return detail;
-    try { return JSON.stringify(detail); } catch { return String(detail); }
-  }
-
-  // ==============================
-  // Status UI
-  // ==============================
-  function clearStatus() {
-    if (el.tgStatus) el.tgStatus.textContent = "";
-    if (el.regStatus) el.regStatus.textContent = "";
-    if (el.globalStatus) el.globalStatus.textContent = "";
-  }
-
-  function setTg(msg, kind) {
-    if (!el.tgStatus) return;
-    el.tgStatus.textContent = msg;
-    el.tgStatus.dataset.kind = kind;
-    setGlobal(msg, kind);
-  }
-
-  function setReg(msg, kind) {
-    if (!el.regStatus) return;
-    el.regStatus.textContent = msg;
-    el.regStatus.dataset.kind = kind;
-    setGlobal(msg, kind);
-  }
-
-  function setGlobal(msg, kind) {
-    if (!el.globalStatus) return;
-    el.globalStatus.textContent = msg;
-    el.globalStatus.dataset.kind = kind;
-  }
-
-  function disable(btn, v) {
-    if (!btn) return;
-    btn.disabled = !!v;
-    btn.setAttribute("aria-disabled", v ? "true" : "false");
-  }
-
-  // ==============================
-  // Utils
-  // ==============================
-  function normalizeUsername(v) {
-    let s = (v || "").trim();
-    if (!s) return "";
-    if (!s.startsWith("@")) s = "@" + s;
-    return s;
-  }
-
-  function looksLikeUsername(u) {
-    // @ + 5..32 символа, буквы/цифры/подчёркивания
-    return /^@[a-zA-Z0-9_]{5,32}$/.test(u);
-  }
-
-  function normalizeBase(v) {
-    let s = (v || "").trim();
-    s = s.replace(/\/+$/, "");
-    return s;
+  // if backend isn't configured - ask once (no leaking)
+  if (!API_BASE) {
+    // не мешаем сразу, только если пользователь нажмёт кнопку
+    console.warn("API_BASE is not set. Use ?api=... or set in modal.");
   }
 })();

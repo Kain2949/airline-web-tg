@@ -2,134 +2,125 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Airline</title>
-
-  <!-- твой стиль -->
-  <link rel="stylesheet" href="style2.css?v=1" />
-
-  <!-- скрипт -->
-  <script src="script.js?v=20" defer></script>
+  <link rel="stylesheet" href="style2.css" />
 </head>
 
 <body>
-  <div class="page">
-    <button id="langBtn" class="lang-btn" type="button" aria-label="Language">EN</button>
+  <div class="stars" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
 
-    <h1 class="title" data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
+  <main class="page">
+    <header class="topbar">
+      <button class="lang" id="langBtn" type="button" aria-label="Switch language">EN</button>
+      <h1 class="title" id="t_title">Авиакомпания: регистрация и бронирование</h1>
+    </header>
 
     <section class="card">
-      <h2 class="card-title" data-i18n="tgTitle">1. Подтверждение через Telegram</h2>
+      <div class="cardHead">
+        <h2 class="cardTitle" id="t_step1">1. Подтверждение через Telegram</h2>
+      </div>
 
       <div class="row">
         <div class="field grow">
-          <label class="label" for="tgUsername" data-i18n="tgLabel">Telegram @username</label>
-          <input
-            id="tgUsername"
-            class="input"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            placeholder="@username"
-          />
+          <label class="label" for="tgUsername" id="t_tgLabel">Telegram @username</label>
+          <input class="input" id="tgUsername" autocomplete="off" inputmode="text"
+                 placeholder="@username" />
+          <div class="hint" id="t_tgHint">Например: @Kain_cr</div>
         </div>
 
-        <button id="btnGetCode" class="btn primary" type="button" data-i18n="tgBtn">
-          Получить код
+        <button class="btn primary" id="btnAuthStart" type="button">
+          <span id="t_getCode">Получить код</span>
         </button>
       </div>
-
-      <div id="tgStatus" class="hint"></div>
     </section>
 
     <section class="card">
-      <h2 class="card-title" data-i18n="regTitle">2. Регистрация пассажира</h2>
+      <div class="cardHead">
+        <h2 class="cardTitle" id="t_step2">2. Регистрация пассажира</h2>
+      </div>
 
-      <div class="grid">
+      <div class="grid3">
         <div class="field">
-          <label class="label" for="lastName" data-i18n="lnLabel">Фамилия</label>
-          <input id="lastName" class="input" type="text" autocomplete="family-name" placeholder="Ivanov / Иванов" />
-        </div>
-
-        <div class="field">
-          <label class="label" for="firstName" data-i18n="fnLabel">Имя</label>
-          <input id="firstName" class="input" type="text" autocomplete="given-name" placeholder="Petr / Пётр" />
+          <label class="label" for="lastName" id="t_last">Фамилия</label>
+          <input class="input" id="lastName" autocomplete="family-name" placeholder="Ivanov / Иванов" />
         </div>
 
         <div class="field">
-          <label class="label" for="middleName" data-i18n="mnLabel">Отчество</label>
-          <input id="middleName" class="input" type="text" autocomplete="additional-name" placeholder="Nikolaevich / Николаевич" />
+          <label class="label" for="firstName" id="t_first">Имя</label>
+          <input class="input" id="firstName" autocomplete="given-name" placeholder="Petr / Пётр" />
         </div>
 
-        <div class="field col-2">
-          <label class="label" for="passportId" data-i18n="pidLabel">Серия и номер паспорта</label>
-          <input
-            id="passportId"
-            class="input"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            placeholder="AA0000000"
-          />
-        </div>
-
-        <div class="field col-2">
-          <label class="label" for="birthDate" data-i18n="bdLabel">Дата рождения</label>
-          <input
-            id="birthDate"
-            class="input"
-            type="date"
-            autocomplete="bday"
-          />
-        </div>
-
-        <div class="field col-2">
-          <label class="label" for="phone" data-i18n="phLabel">Телефон</label>
-          <input
-            id="phone"
-            class="input"
-            type="tel"
-            inputmode="tel"
-            autocomplete="tel"
-            placeholder="+375XXXXXXXXX"
-          />
-        </div>
-
-        <div class="field col-2">
-          <label class="label" for="email" data-i18n="emLabel">E-mail</label>
-          <input
-            id="email"
-            class="input"
-            type="email"
-            inputmode="email"
-            autocomplete="email"
-            placeholder="example@mail.com"
-          />
-        </div>
-
-        <div class="field col-4">
-          <label class="label" for="regCode" data-i18n="codeLabel">Код из Telegram (регистрация)</label>
-          <input
-            id="regCode"
-            class="input"
-            type="text"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            placeholder="000000"
-          />
+        <div class="field">
+          <label class="label" for="middleName" id="t_middle">Отчество</label>
+          <input class="input" id="middleName" autocomplete="additional-name" placeholder="Nikolaevich / Николаевич" />
         </div>
       </div>
 
-      <div class="row">
-        <button id="btnRegister" class="btn primary" type="button" data-i18n="regBtn">
-          Завершить регистрацию
+      <div class="grid2">
+        <div class="field">
+          <label class="label" for="passportId" id="t_passport">Серия и номер паспорта</label>
+          <input class="input" id="passportId" autocomplete="off" inputmode="text" placeholder="AA0000000" />
+          <div class="hint" id="t_passHint">Формат: AA0000000</div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="birthDate" id="t_birth">Дата рождения</label>
+          <input class="input" id="birthDate" type="date" />
+          <div class="hint" id="t_birthHint">Выбери дату в календаре</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label class="label" for="phone" id="t_phone">Телефон</label>
+          <input class="input" id="phone" autocomplete="tel" inputmode="tel" placeholder="+375XXXXXXXXX" />
+        </div>
+
+        <div class="field">
+          <label class="label" for="email" id="t_email">E-mail</label>
+          <input class="input" id="email" autocomplete="email" inputmode="email" placeholder="example@mail.com" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="regCode" id="t_regCode">Код из Telegram (регистрация)</label>
+        <input class="input" id="regCode" autocomplete="one-time-code" inputmode="numeric" placeholder="000000" maxlength="6" />
+        <div class="hint" id="t_regHint">6 цифр</div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary wide" id="btnRegister" type="button">
+          <span id="t_finishReg">Завершить регистрацию</span>
         </button>
       </div>
-
-      <div id="regStatus" class="hint"></div>
     </section>
+  </main>
 
-    <div id="globalStatus" class="status"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <div class="toastInner">
+      <div class="toastTitle" id="toastTitle">Сообщение</div>
+      <div class="toastText" id="toastText">...</div>
+      <button class="toastX" id="toastClose" type="button" aria-label="Close">×</button>
+    </div>
   </div>
+
+  <div class="modal" id="apiModal" hidden>
+    <div class="modalCard">
+      <div class="modalTitle">Backend URL</div>
+      <div class="modalText">
+        Ты открыл сайт без адреса сервера. Один раз укажи ngrok URL — и я запомню.
+      </div>
+      <input class="input" id="apiInput" placeholder="https://xxxx.ngrok-free.dev" />
+      <div class="modalActions">
+        <button class="btn ghost" id="apiCancel" type="button">Отмена</button>
+        <button class="btn primary" id="apiSave" type="button">Сохранить</button>
+      </div>
+      <div class="hint">Либо открой так: <span class="mono">...?api=https://xxxx.ngrok-free.dev</span></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
