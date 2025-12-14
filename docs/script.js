@@ -1,416 +1,343 @@
-const I18N = {
-  ru: {
-    title: "Авиакомпания: регистрация и бронирование",
-    step1: "1. Подтверждение через Telegram",
-    getCode: "Получить код",
-    step2: "2. Регистрация пассажира",
-    finishReg: "Завершить регистрацию",
-    step3: "3. Бронирование рейса",
-    findFlights: "Найти рейсы",
-    getBookCode: "Получить код",
-    book: "Забронировать",
-  },
-  en: {
-    title: "Airline: registration & booking",
-    step1: "1. Telegram verification",
-    getCode: "Get code",
-    step2: "2. Passenger registration",
-    finishReg: "Finish registration",
-    step3: "3. Flight booking",
-    findFlights: "Search flights",
-    getBookCode: "Get code",
-    book: "Book",
-  }
-};
-
-let lang = localStorage.getItem("lang") || "ru";
-
-function applyLang() {
-  document.querySelectorAll("[data-i18n]").forEach(el => {
-    const key = el.getAttribute("data-i18n");
-    if (I18N[lang] && I18N[lang][key]) el.textContent = I18N[lang][key];
-  });
-
-  // кнопка показывает, на какой язык переключит
-  const btn = document.getElementById("lang-toggle");
-  if (btn) btn.textContent = (lang === "ru") ? "EN" : "RU";
-
-  localStorage.setItem("lang", lang);
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("lang-toggle");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      lang = (lang === "ru") ? "en" : "ru";
-      applyLang();
-    });
-  }
-  applyLang();
-});
-
-
-// тут меняешь на URL сервера (ngrok и т.д.)
-const API_BASE = "https://kristan-labored-earsplittingly.ngrok-free.dev";
-
-let tgAuthRequestId = null;      // для регистрации
-let bookingAuthRequestId = null; // для бронирования
-let currentTgUsername = null;
-
-const tgForm = document.getElementById("tg-form");
-const tgCodeBlock = document.getElementById("tg-code-block");
-const regAuthInput = document.getElementById("reg-auth-request-id");
-const regForm = document.getElementById("register-form");
-const regResult = document.getElementById("reg-result");
-const bookingSection = document.getElementById("booking-section");
-
-const searchForm = document.getElementById("search-form");
-const outboundFlightsDiv = document.getElementById("outbound-flights");
-const returnFlightsDiv = document.getElementById("return-flights");
-const outboundSeatsDiv = document.getElementById("outbound-seats");
-const returnSeatsDiv = document.getElementById("return-seats");
-
-const passengerIdInput = document.getElementById("passenger-id");
-const outboundFlightIdInput = document.getElementById("outbound-flight-id");
-const returnFlightIdInput = document.getElementById("return-flight-id");
-const outboundSeatInput = document.getElementById("outbound-seat");
-const returnSeatInput = document.getElementById("return-seat");
-
-const bookForm = document.getElementById("booking-form");
-const bookCodeInput = document.getElementById("book-code");
-const bookGetCodeBtn = document.getElementById("book-get-code");
-const bookAuthInput = document.getElementById("book-auth-request-id");
-const bookingResult = document.getElementById("booking-result");
-
-
-// ===== Telegram авторизация (старт кода для регистрации) =====
-
-tgForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const usernameRaw = document.getElementById("tg-username").value.trim();
-    if (!usernameRaw) {
-        alert("Введи Telegram username");
-        return;
+(() => {
+  // ==============================
+  // API BASE
+  // ==============================
+  // Удобно: один раз открываешь сайт так:
+  // https://kain2949.github.io/airline-web-tg/?api=https://xxxx.ngrok-free.dev
+  // и оно сохранится в localStorage.
+  const API_BASE = (() => {
+    const qp = new URLSearchParams(location.search);
+    const fromQ = (qp.get("api") || "").trim();
+    if (fromQ) {
+      const clean = normalizeBase(fromQ);
+      localStorage.setItem("api_base", clean);
+      return clean;
     }
-    currentTgUsername = usernameRaw;
+    const saved = (localStorage.getItem("api_base") || "").trim();
+    if (saved) return normalizeBase(saved);
+
+    // запасной вариант — ПОДСТАВЬ СВОЙ NGROK, если не хочешь через ?api=
+    return "https://kristan-labored-earsplittingly.ngrok-free.dev";
+  })();
+
+  // ==============================
+  // i18n
+  // ==============================
+  const I18N = {
+    ru: {
+      title: "Авиакомпания: регистрация и бронирование",
+      tgTitle: "1. Подтверждение через Telegram",
+      tgLabel: "Telegram @username",
+      tgBtn: "Получить код",
+      regTitle: "2. Регистрация пассажира",
+      lnLabel: "Фамилия",
+      fnLabel: "Имя",
+      mnLabel: "Отчество",
+      pidLabel: "Серия и номер паспорта",
+      bdLabel: "Дата рождения",
+      phLabel: "Телефон",
+      emLabel: "E-mail",
+      codeLabel: "Код из Telegram (регистрация)",
+      regBtn: "Завершить регистрацию",
+      s_api: (v) => `API: ${v}`,
+      s_need_user: "Впиши Telegram @username.",
+      s_sent: "Код отправлен в Telegram. Проверь чат с ботом.",
+      s_need_code: "Впиши код из Telegram.",
+      s_bad_user: "Нужен @username (можно без @, я сама добавлю).",
+      s_reg_ok: "Регистрация успешна. Теперь можешь бронировать.",
+    },
+    en: {
+      title: "Airline: registration & booking",
+      tgTitle: "1. Telegram verification",
+      tgLabel: "Telegram @username",
+      tgBtn: "Get code",
+      regTitle: "2. Passenger registration",
+      lnLabel: "Last name",
+      fnLabel: "First name",
+      mnLabel: "Middle name",
+      pidLabel: "Passport ID",
+      bdLabel: "Birth date",
+      phLabel: "Phone",
+      emLabel: "E-mail",
+      codeLabel: "Telegram code (registration)",
+      regBtn: "Complete registration",
+      s_api: (v) => `API: ${v}`,
+      s_need_user: "Enter Telegram @username.",
+      s_sent: "Code sent to Telegram. Check the bot chat.",
+      s_need_code: "Enter the Telegram code.",
+      s_bad_user: "Need @username (you can omit @ — I'll add it).",
+      s_reg_ok: "Registration completed. You can book now.",
+    },
+  };
+
+  // ==============================
+  // DOM helpers
+  // ==============================
+  const $ = (id) => document.getElementById(id);
+
+  const el = {
+    langBtn: null,
+
+    tgUsername: null,
+    btnGetCode: null,
+    tgStatus: null,
+
+    lastName: null,
+    firstName: null,
+    middleName: null,
+    passportId: null,
+    birthDate: null,
+    phone: null,
+    email: null,
+    regCode: null,
+    btnRegister: null,
+    regStatus: null,
+
+    globalStatus: null,
+  };
+
+  let lang = (localStorage.getItem("lang") || "ru").toLowerCase();
+  if (!I18N[lang]) lang = "ru";
+
+  document.addEventListener("DOMContentLoaded", init);
+
+  function init() {
+    // подцепляем элементы (и НЕ падаем, если что-то не так)
+    el.langBtn = $("langBtn");
+    el.tgUsername = $("tgUsername");
+    el.btnGetCode = $("btnGetCode");
+    el.tgStatus = $("tgStatus");
+
+    el.lastName = $("lastName");
+    el.firstName = $("firstName");
+    el.middleName = $("middleName");
+    el.passportId = $("passportId");
+    el.birthDate = $("birthDate");
+    el.phone = $("phone");
+    el.email = $("email");
+    el.regCode = $("regCode");
+    el.btnRegister = $("btnRegister");
+    el.regStatus = $("regStatus");
+
+    el.globalStatus = $("globalStatus");
+
+    // если что-то ключевое отсутствует — покажем понятно, а не "null.addEventListener"
+    const must = [
+      ["langBtn", el.langBtn],
+      ["tgUsername", el.tgUsername],
+      ["btnGetCode", el.btnGetCode],
+      ["btnRegister", el.btnRegister],
+    ];
+    const missing = must.filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length) {
+      console.error("DOM missing:", missing);
+      setGlobal(`DOM missing: ${missing.join(", ")} (index.html != script.js)`, "err");
+      return;
+    }
+
+    // язык
+    el.langBtn.addEventListener("click", () => {
+      lang = lang === "ru" ? "en" : "ru";
+      localStorage.setItem("lang", lang);
+      applyI18n();
+    });
+
+    // кнопки
+    el.btnGetCode.addEventListener("click", onGetCode);
+    el.btnRegister.addEventListener("click", onRegister);
+
+    // первичная отрисовка
+    applyI18n();
+    setGlobal(I18N[lang].s_api(API_BASE), "ok");
+  }
+
+  function applyI18n() {
+    const dict = I18N[lang];
+    document.documentElement.lang = lang;
+
+    // поменять тексты
+    document.querySelectorAll("[data-i18n]").forEach((node) => {
+      const key = node.getAttribute("data-i18n");
+      const val = dict[key];
+      if (typeof val === "string") node.textContent = val;
+    });
+
+    // кнопка языка
+    if (el.langBtn) el.langBtn.textContent = lang === "ru" ? "EN" : "RU";
+  }
+
+  // ==============================
+  // Actions
+  // ==============================
+  async function onGetCode() {
+    clearStatus();
+
+    const u = normalizeUsername(el.tgUsername.value);
+    if (!u) return setTg(I18N[lang].s_need_user, "err");
+    if (!looksLikeUsername(u)) return setTg(I18N[lang].s_bad_user, "err");
+
+    disable(el.btnGetCode, true);
 
     try {
-        const res = await fetch(`${API_BASE}/api/auth/start`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                telegram_username: currentTgUsername,
-                purpose: "registration",
-            }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-            alert("Ошибка: " + (data.detail || res.status));
-            return;
-        }
-
-        tgAuthRequestId = data.request_id;
-        regAuthInput.value = tgAuthRequestId;
-        tgCodeBlock.classList.remove("hidden");
-    } catch (err) {
-        console.error(err);
-        alert("Не удалось достучаться до сервера (регистрация).");
+      const res = await apiPost("/api/auth/start", { username: u });
+      if (!res.ok) {
+        return setTg(formatApiError(res), "err");
+      }
+      setTg(I18N[lang].s_sent, "ok");
+    } catch (e) {
+      console.error(e);
+      setTg(`Ошибка сети: ${String(e)}`, "err");
+    } finally {
+      disable(el.btnGetCode, false);
     }
-});
+  }
 
+  async function onRegister() {
+    clearStatus();
 
-// ===== Регистрация пассажира =====
+    const u = normalizeUsername(el.tgUsername.value);
+    if (!u || !looksLikeUsername(u)) return setReg(I18N[lang].s_need_user, "err");
 
-regForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    if (!tgAuthRequestId || !currentTgUsername) {
-        alert("Сначала запроси код через Telegram в шаге 1.");
-        return;
-    }
+    const code = (el.regCode.value || "").trim();
+    if (!code) return setReg(I18N[lang].s_need_code, "err");
 
     const payload = {
-        auth_request_id: tgAuthRequestId,
-        code: document.getElementById("reg-code").value.trim(),
-        last_name: document.getElementById("last-name").value.trim(),
-        first_name: document.getElementById("first-name").value.trim(),
-        middle_name: document.getElementById("middle-name").value.trim() || null,
-        passport_no: document.getElementById("passport-no").value.trim(),
-        birth_date: document.getElementById("birth-date").value,
-        phone: document.getElementById("phone").value.trim(),
-        email: document.getElementById("email").value.trim(),
-        telegram_username: currentTgUsername,
+      username: u,
+      code: code,
+
+      last_name: (el.lastName.value || "").trim(),
+      first_name: (el.firstName.value || "").trim(),
+      middle_name: (el.middleName.value || "").trim() || null,
+
+      passport_id: (el.passportId.value || "").trim(),
+      birth_date: (el.birthDate.value || "").trim(), // yyyy-mm-dd
+      phone: (el.phone.value || "").trim(),
+      email: (el.email.value || "").trim(),
     };
 
-    regResult.textContent = "";
+    // минимальная валидация на фронте (не “душу”, но глупости режу)
+    const miss = [];
+    if (!payload.last_name) miss.push("last name");
+    if (!payload.first_name) miss.push("first name");
+    if (!payload.passport_id) miss.push("passport");
+    if (!payload.birth_date) miss.push("birth date");
+    if (!payload.phone) miss.push("phone");
+    if (!payload.email) miss.push("email");
+    if (miss.length) return setReg(`Заполни поля: ${miss.join(", ")}`, "err");
+
+    disable(el.btnRegister, true);
 
     try {
-        const res = await fetch(`${API_BASE}/api/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
+      // ВАЖНО: если у тебя в backend другой путь — меняешь только ЭТУ строку.
+      const res = await apiPost("/api/passengers/register", payload);
 
-        const data = await res.json();
+      if (!res.ok) {
+        // если вдруг у тебя эндпоинт называется иначе, сразу увидишь 404 здесь.
+        return setReg(formatApiError(res), "err");
+      }
 
-        if (!res.ok) {
-            regResult.textContent = "Ошибка регистрации: " + (data.detail || res.status);
-            return;
-        }
-
-        regResult.textContent =
-            `Регистрация успешна.\n` +
-            `ID пассажира: ${data.passenger_id}\n` +
-            `Паспорт (маска): ${data.passport_masked}`;
-
-        passengerIdInput.value = data.passenger_id;
-
-        // открываем блок бронирования
-        bookingSection.classList.remove("hidden");
-    } catch (err) {
-        console.error(err);
-        regResult.textContent = "Ошибка сети при регистрации.";
+      setReg(I18N[lang].s_reg_ok, "ok");
+    } catch (e) {
+      console.error(e);
+      setReg(`Ошибка сети: ${String(e)}`, "err");
+    } finally {
+      disable(el.btnRegister, false);
     }
-});
+  }
 
-
-// ===== Поиск рейсов =====
-
-searchForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const from = document.getElementById("from").value;
-    const to = document.getElementById("to").value;
-    const dateOut = document.getElementById("date-outbound").value;
-    const dateBack = document.getElementById("date-return").value;
-
-    if (!from || !to || !dateOut || !dateBack) {
-        alert("Заполни направления и даты.");
-        return;
-    }
-
-    try {
-        const [outRes, retRes] = await Promise.all([
-            fetch(
-                `${API_BASE}/api/flights?departure_city=${encodeURIComponent(
-                    from
-                )}&arrival_city=${encodeURIComponent(
-                    to
-                )}&date=${encodeURIComponent(dateOut)}`
-            ),
-            fetch(
-                `${API_BASE}/api/flights?departure_city=${encodeURIComponent(
-                    to
-                )}&arrival_city=${encodeURIComponent(
-                    from
-                )}&date=${encodeURIComponent(dateBack)}`
-            ),
-        ]);
-
-        const outFlights = await outRes.json();
-        const retFlights = await retRes.json();
-
-        renderFlights("outbound-flights", outFlights, "outbound");
-        renderFlights("return-flights", retFlights, "return");
-    } catch (err) {
-        console.error(err);
-        alert("Ошибка загрузки рейсов.");
-    }
-});
-
-function renderFlights(containerId, flights, type) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = "";
-
-    if (!flights || flights.length === 0) {
-        container.textContent = "Нет подходящих рейсов";
-        return;
-    }
-
-    flights.forEach((f) => {
-        const label = document.createElement("label");
-        label.className = "flight-option";
-
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.name = type === "outbound" ? "outboundFlight" : "returnFlight";
-        input.value = f.flight_id;
-
-        input.addEventListener("change", () => {
-            const hiddenId =
-                type === "outbound"
-                    ? outboundFlightIdInput
-                    : returnFlightIdInput;
-            hiddenId.value = f.flight_id;
-            loadSeats(f.flight_id, type);
-        });
-
-        const span = document.createElement("span");
-        span.textContent = `${f.flight_number} ${f.departure_city} → ${f.arrival_city} ${f.flight_date} ${f.flight_time}`;
-
-        label.appendChild(input);
-        label.appendChild(span);
-        container.appendChild(label);
+  // ==============================
+  // API helpers
+  // ==============================
+  async function apiPost(path, body) {
+    const url = API_BASE + path;
+    const r = await fetch(url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-}
 
+    const data = await safeRead(r);
+    return { ok: r.ok, status: r.status, data, url };
+  }
 
-// ===== Загрузка и выбор мест =====
-
-async function loadSeats(flightId, type) {
-    const container =
-        type === "outbound" ? outboundSeatsDiv : returnSeatsDiv;
-
-    container.innerHTML = "Загрузка мест...";
-
-    try {
-        const res = await fetch(`${API_BASE}/api/flights/${flightId}/seats`);
-        const data = await res.json();
-        renderSeats(container, data, type);
-    } catch (err) {
-        console.error(err);
-        container.textContent = "Ошибка загрузки мест";
+  async function safeRead(resp) {
+    const ct = (resp.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      try { return await resp.json(); } catch { return null; }
     }
-}
+    try { return await resp.text(); } catch { return null; }
+  }
 
-function renderSeats(container, seatData, type) {
-    container.innerHTML = "";
-
-    const rows = seatData.rows;
-    const seatsPerRow = seatData.seats_per_row;
-    const usable = seatData.usable_seats;
-    const takenSet = new Set(seatData.taken || []);
-
-    const selectedSeatInput =
-        type === "outbound" ? outboundSeatInput : returnSeatInput;
-    selectedSeatInput.value = "";
-
-    let seatNumber = 1;
-
-    for (let r = 1; r <= rows; r++) {
-        const rowDiv = document.createElement("div");
-        rowDiv.className = "seat-row";
-
-        for (let s = 1; s <= seatsPerRow; s++) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "seat";
-            const seatStr = String(seatNumber);
-            btn.textContent = seatStr;
-
-            const isOutOfRange = seatNumber > usable;
-            const isTaken = takenSet.has(seatStr);
-
-            if (isOutOfRange || isTaken) {
-                btn.disabled = true;
-                btn.classList.add("seat-disabled");
-            } else {
-                btn.addEventListener("click", () => {
-                    const previously =
-                        container.querySelectorAll(".seat-selected");
-                    previously.forEach((b) =>
-                        b.classList.remove("seat-selected")
-                    );
-                    btn.classList.add("seat-selected");
-                    selectedSeatInput.value = seatStr;
-                });
-            }
-
-            rowDiv.appendChild(btn);
-            seatNumber++;
-        }
-
-        container.appendChild(rowDiv);
+  function formatApiError(res) {
+    const d = res.data;
+    if (typeof d === "string" && d.trim()) return `HTTP ${res.status}: ${d}`;
+    if (d && typeof d === "object") {
+      // fastapi часто отдаёт {detail: "..."} или массив ошибок
+      if (d.detail) return `HTTP ${res.status}: ${stringifyDetail(d.detail)}`;
+      return `HTTP ${res.status}: ${JSON.stringify(d)}`;
     }
-}
+    return `HTTP ${res.status}: ошибка`;
+  }
 
+  function stringifyDetail(detail) {
+    if (typeof detail === "string") return detail;
+    try { return JSON.stringify(detail); } catch { return String(detail); }
+  }
 
-// ===== Коды для бронирования =====
+  // ==============================
+  // Status UI
+  // ==============================
+  function clearStatus() {
+    if (el.tgStatus) el.tgStatus.textContent = "";
+    if (el.regStatus) el.regStatus.textContent = "";
+    if (el.globalStatus) el.globalStatus.textContent = "";
+  }
 
-bookGetCodeBtn.addEventListener("click", async () => {
-    if (!currentTgUsername) {
-        alert("Сначала подтверди Telegram в шаге 1 и зарегистрируйся.");
-        return;
-    }
+  function setTg(msg, kind) {
+    if (!el.tgStatus) return;
+    el.tgStatus.textContent = msg;
+    el.tgStatus.dataset.kind = kind;
+    setGlobal(msg, kind);
+  }
 
-    if (
-        !passengerIdInput.value ||
-        !outboundFlightIdInput.value ||
-        !returnFlightIdInput.value ||
-        !outboundSeatInput.value ||
-        !returnSeatInput.value
-    ) {
-        alert("Выбери рейсы и места, прежде чем запрашивать код.");
-        return;
-    }
+  function setReg(msg, kind) {
+    if (!el.regStatus) return;
+    el.regStatus.textContent = msg;
+    el.regStatus.dataset.kind = kind;
+    setGlobal(msg, kind);
+  }
 
-    try {
-        const res = await fetch(`${API_BASE}/api/auth/start`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                telegram_username: currentTgUsername,
-                purpose: "booking",
-            }),
-        });
+  function setGlobal(msg, kind) {
+    if (!el.globalStatus) return;
+    el.globalStatus.textContent = msg;
+    el.globalStatus.dataset.kind = kind;
+  }
 
-        const data = await res.json();
-        if (!res.ok) {
-            alert("Ошибка: " + (data.detail || res.status));
-            return;
-        }
+  function disable(btn, v) {
+    if (!btn) return;
+    btn.disabled = !!v;
+    btn.setAttribute("aria-disabled", v ? "true" : "false");
+  }
 
-        bookingAuthRequestId = data.request_id;
-        bookAuthInput.value = bookingAuthRequestId;
-        alert("Код для бронирования отправлен в Telegram бота.");
-    } catch (err) {
-        console.error(err);
-        alert("Ошибка при запросе кода бронирования.");
-    }
-});
+  // ==============================
+  // Utils
+  // ==============================
+  function normalizeUsername(v) {
+    let s = (v || "").trim();
+    if (!s) return "";
+    if (!s.startsWith("@")) s = "@" + s;
+    return s;
+  }
 
+  function looksLikeUsername(u) {
+    // @ + 5..32 символа, буквы/цифры/подчёркивания
+    return /^@[a-zA-Z0-9_]{5,32}$/.test(u);
+  }
 
-// ===== Бронирование =====
-
-bookForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    if (!bookingAuthRequestId) {
-        alert("Сначала нажми 'Получить код', чтобы бот отправил код подтверждения.");
-        return;
-    }
-
-    const payload = {
-        auth_request_id: bookingAuthRequestId,
-        code: bookCodeInput.value.trim(),
-        passenger_id: Number(passengerIdInput.value),
-        outbound_flight_id: Number(outboundFlightIdInput.value),
-        return_flight_id: Number(returnFlightIdInput.value),
-        outbound_seat: outboundSeatInput.value,
-        return_seat: returnSeatInput.value,
-    };
-
-    bookingResult.textContent = "";
-
-    try {
-        const res = await fetch(`${API_BASE}/api/book`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-            bookingResult.textContent =
-                "Ошибка бронирования: " + (data.detail || res.status);
-            return;
-        }
-
-        bookingResult.textContent = JSON.stringify(data, null, 2);
-    } catch (err) {
-        console.error(err);
-        bookingResult.textContent = "Ошибка сети при бронировании.";
-    }
-});
+  function normalizeBase(v) {
+    let s = (v || "").trim();
+    s = s.replace(/\/+$/, "");
+    return s;
+  }
+})();

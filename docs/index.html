@@ -1,127 +1,135 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Airline</title>
 
-  <!-- cache bust, чтобы GitHub Pages не издевался -->
-  <link rel="stylesheet" href="style2.css?v=9">
+  <!-- твой стиль -->
+  <link rel="stylesheet" href="style2.css?v=1" />
+
+  <!-- скрипт -->
+  <script src="script.js?v=20" defer></script>
 </head>
 
 <body>
-<main class="container">
+  <div class="page">
+    <button id="langBtn" class="lang-btn" type="button" aria-label="Language">EN</button>
 
-  <header>
-    <button id="lang-toggle" class="lang-btn" type="button">EN</button>
-    <h1 data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
-  </header>
+    <h1 class="title" data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
 
-  <!-- STEP 1 -->
-  <section class="step">
-    <h2 data-i18n="step1">1. Подтверждение через Telegram</h2>
+    <section class="card">
+      <h2 class="card-title" data-i18n="tgTitle">1. Подтверждение через Telegram</h2>
 
-    <form id="tg-form">
       <div class="row">
-        <label>
-          <span data-i18n="tgLabel">Telegram @username</span>
+        <div class="field grow">
+          <label class="label" for="tgUsername" data-i18n="tgLabel">Telegram @username</label>
           <input
+            id="tgUsername"
+            class="input"
             type="text"
-            id="tg-username"
+            inputmode="text"
+            autocomplete="off"
             placeholder="@username"
-            autocomplete="username"
-            required
-          >
-        </label>
+          />
+        </div>
 
-        <button type="submit" data-i18n="getCode">
+        <button id="btnGetCode" class="btn primary" type="button" data-i18n="tgBtn">
           Получить код
         </button>
       </div>
-    </form>
 
-    <div id="tg-note" class="mini-note hidden" data-i18n="tgNote">
-      Код отправлен в Telegram-бот. Если бот молчит — открой чат и нажми /start.
-    </div>
-  </section>
+      <div id="tgStatus" class="hint"></div>
+    </section>
 
-  <!-- STEP 2 -->
-  <section class="step" id="reg-section">
-    <h2 data-i18n="step2">2. Регистрация пассажира</h2>
+    <section class="card">
+      <h2 class="card-title" data-i18n="regTitle">2. Регистрация пассажира</h2>
 
-    <form id="register-form">
+      <div class="grid">
+        <div class="field">
+          <label class="label" for="lastName" data-i18n="lnLabel">Фамилия</label>
+          <input id="lastName" class="input" type="text" autocomplete="family-name" placeholder="Ivanov / Иванов" />
+        </div>
 
-      <div class="row">
-        <label>
-          <span data-i18n="lastName">Фамилия</span>
-          <input type="text" id="last-name" placeholder="Ivanov / Иванов" required>
-        </label>
+        <div class="field">
+          <label class="label" for="firstName" data-i18n="fnLabel">Имя</label>
+          <input id="firstName" class="input" type="text" autocomplete="given-name" placeholder="Petr / Пётр" />
+        </div>
 
-        <label>
-          <span data-i18n="firstName">Имя</span>
-          <input type="text" id="first-name" placeholder="Petr / Пётр" required>
-        </label>
+        <div class="field">
+          <label class="label" for="middleName" data-i18n="mnLabel">Отчество</label>
+          <input id="middleName" class="input" type="text" autocomplete="additional-name" placeholder="Nikolaevich / Николаевич" />
+        </div>
 
-        <label>
-          <span data-i18n="middleName">Отчество</span>
-          <input type="text" id="middle-name" placeholder="Nikolaevich / Николаевич">
-        </label>
-      </div>
-
-      <div class="row">
-        <label>
-          <span data-i18n="passport">Серия и номер паспорта</span>
-          <input type="text" id="passport-no" placeholder="AA0000000" required>
-        </label>
-
-        <label>
-          <span data-i18n="birthDate">Дата рождения</span>
+        <div class="field col-2">
+          <label class="label" for="passportId" data-i18n="pidLabel">Серия и номер паспорта</label>
           <input
+            id="passportId"
+            class="input"
             type="text"
-            id="birth-date"
-            placeholder="ДД.ММ.ГГГГ"
+            inputmode="text"
+            autocomplete="off"
+            placeholder="AA0000000"
+          />
+        </div>
+
+        <div class="field col-2">
+          <label class="label" for="birthDate" data-i18n="bdLabel">Дата рождения</label>
+          <input
+            id="birthDate"
+            class="input"
+            type="date"
+            autocomplete="bday"
+          />
+        </div>
+
+        <div class="field col-2">
+          <label class="label" for="phone" data-i18n="phLabel">Телефон</label>
+          <input
+            id="phone"
+            class="input"
+            type="tel"
+            inputmode="tel"
+            autocomplete="tel"
+            placeholder="+375XXXXXXXXX"
+          />
+        </div>
+
+        <div class="field col-2">
+          <label class="label" for="email" data-i18n="emLabel">E-mail</label>
+          <input
+            id="email"
+            class="input"
+            type="email"
+            inputmode="email"
+            autocomplete="email"
+            placeholder="example@mail.com"
+          />
+        </div>
+
+        <div class="field col-4">
+          <label class="label" for="regCode" data-i18n="codeLabel">Код из Telegram (регистрация)</label>
+          <input
+            id="regCode"
+            class="input"
+            type="text"
             inputmode="numeric"
-            pattern="\d{2}\.\d{2}\.\d{4}"
-            required
-          >
-        </label>
-      </div>
-
-      <div class="row">
-        <label>
-          <span data-i18n="phone">Телефон</span>
-          <input type="tel" id="phone" placeholder="+375XXXXXXXXX" required>
-        </label>
-
-        <label>
-          <span data-i18n="email">E-mail</span>
-          <input type="email" id="email" placeholder="example@mail.com" required>
-        </label>
-      </div>
-
-      <div class="row">
-        <label>
-          <span data-i18n="regCode">Код из Telegram (регистрация)</span>
-          <input
-            type="text"
-            id="reg-code"
+            autocomplete="one-time-code"
             placeholder="000000"
-            inputmode="numeric"
-            required
-          >
-        </label>
+          />
+        </div>
       </div>
 
-      <button type="submit" data-i18n="finishReg">
-        Завершить регистрацию
-      </button>
-    </form>
+      <div class="row">
+        <button id="btnRegister" class="btn primary" type="button" data-i18n="regBtn">
+          Завершить регистрацию
+        </button>
+      </div>
 
-    <pre id="reg-result"></pre>
-  </section>
+      <div id="regStatus" class="hint"></div>
+    </section>
 
-</main>
-
-<script src="script.js?v=9"></script>
+    <div id="globalStatus" class="status"></div>
+  </div>
 </body>
 </html>
