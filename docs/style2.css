@@ -307,3 +307,4 @@ body{
   .wide{ width:100%; }
   .lang{ width:46px; height:46px; }
 }
+[hidden] { display: none !important; }
