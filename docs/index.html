@@ -1,264 +1,127 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Airline</title>
-  <link rel="stylesheet" href="style2.css" />
+
+  <!-- cache bust, чтобы GitHub Pages не издевался -->
+  <link rel="stylesheet" href="style2.css?v=9">
 </head>
 
 <body>
-  <main class="container">
-    <header>
-      <button id="lang-toggle" class="lang-btn" type="button">EN</button>
-      <h1 data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
-    </header>
+<main class="container">
 
-    <!-- STEP 1 -->
-    <section class="step">
-      <h2 data-i18n="step1">1. Подтверждение через Telegram</h2>
+  <header>
+    <button id="lang-toggle" class="lang-btn" type="button">EN</button>
+    <h1 data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
+  </header>
 
-      <form id="tg-form">
-        <div class="row">
-          <label data-i18n-label="tgUserLabel">
-            Telegram @username
-            <input type="text" id="tg-username" placeholder="@username" autocomplete="username" required />
-          </label>
+  <!-- STEP 1 -->
+  <section class="step">
+    <h2 data-i18n="step1">1. Подтверждение через Telegram</h2>
 
-          <button type="submit" data-i18n="getCode">Получить код</button>
-        </div>
-      </form>
+    <form id="tg-form">
+      <div class="row">
+        <label>
+          <span data-i18n="tgLabel">Telegram @username</span>
+          <input
+            type="text"
+            id="tg-username"
+            placeholder="@username"
+            autocomplete="username"
+            required
+          >
+        </label>
 
-      <div id="tg-code-block" class="mini-note hidden" data-i18n="tgNote">
-        Код отправлен в Telegram-бота. Открой чат с ботом и нажми /start, если ещё не делал этого.
+        <button type="submit" data-i18n="getCode">
+          Получить код
+        </button>
       </div>
-    </section>
+    </form>
 
-    <!-- STEP 2 -->
-    <section class="step" id="reg-section">
-      <h2 data-i18n="step2">2. Регистрация пассажира</h2>
+    <div id="tg-note" class="mini-note hidden" data-i18n="tgNote">
+      Код отправлен в Telegram-бот. Если бот молчит — открой чат и нажми /start.
+    </div>
+  </section>
 
-      <form id="register-form">
-        <div class="row">
-          <label data-i18n-label="lastName">
-            Фамилия
-            <input type="text" id="last-name" placeholder="Ivanov / Иванов" autocomplete="family-name" required />
-          </label>
+  <!-- STEP 2 -->
+  <section class="step" id="reg-section">
+    <h2 data-i18n="step2">2. Регистрация пассажира</h2>
 
-          <label data-i18n-label="firstName">
-            Имя
-            <input type="text" id="first-name" placeholder="Petr / Пётр" autocomplete="given-name" required />
-          </label>
+    <form id="register-form">
 
-          <label data-i18n-label="middleName">
-            Отчество
-            <input type="text" id="middle-name" placeholder="Nikolaevich / Николаевич" autocomplete="additional-name" />
-          </label>
-        </div>
+      <div class="row">
+        <label>
+          <span data-i18n="lastName">Фамилия</span>
+          <input type="text" id="last-name" placeholder="Ivanov / Иванов" required>
+        </label>
 
-        <div class="row">
-          <label data-i18n-label="passport">
-            Серия и номер паспорта
-            <input type="text" id="passport-no" placeholder="AA0000000" autocomplete="off" required />
-          </label>
+        <label>
+          <span data-i18n="firstName">Имя</span>
+          <input type="text" id="first-name" placeholder="Petr / Пётр" required>
+        </label>
 
-          <label data-i18n-label="birthDate">
-            Дата рождения
-            <input type="date" id="birth-date" required />
-          </label>
-        </div>
-
-        <div class="row">
-          <label data-i18n-label="phone">
-            Телефон
-            <input type="tel" id="phone" placeholder="+375XXXXXXXXX" autocomplete="tel" required />
-          </label>
-
-          <label data-i18n-label="email">
-            E-mail
-            <input type="email" id="email" placeholder="example@mail.com" autocomplete="email" required />
-          </label>
-        </div>
-
-        <div class="row">
-          <label data-i18n-label="regCode">
-            Код из Telegram (регистрация)
-            <input type="text" id="reg-code" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" required />
-          </label>
-        </div>
-
-        <input type="hidden" id="reg-auth-request-id" />
-
-        <button type="submit" data-i18n="finishReg">Завершить регистрацию</button>
-      </form>
-
-      <pre id="reg-result"></pre>
-    </section>
-
-    <!-- STEP 3 -->
-    <section class="step hidden" id="booking-section">
-      <h2 data-i18n="step3">3. Бронирование рейса</h2>
-
-      <form id="search-form">
-        <div class="row">
-          <label data-i18n-label="from">
-            Откуда
-            <select id="from">
-              <option value="Minsk">Минск</option>
-              <option value="Warsaw">Варшава</option>
-              <option value="Berlin">Берлин</option>
-            </select>
-          </label>
-
-          <label data-i18n-label="to">
-            Куда
-            <select id="to">
-              <option value="Warsaw">Варшава</option>
-              <option value="Minsk">Минск</option>
-              <option value="Berlin">Берлин</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="row">
-          <label data-i18n-label="dateOut">
-            Дата туда
-            <input type="date" id="date-outbound" required />
-          </label>
-
-          <label data-i18n-label="dateBack">
-            Дата обратно
-            <input type="date" id="date-return" required />
-          </label>
-        </div>
-
-        <button type="submit" data-i18n="findFlights">Найти рейсы</button>
-      </form>
-
-      <div class="flights-block">
-        <div>
-          <h3 data-i18n="outboundTitle">Рейс туда</h3>
-          <div id="outbound-flights" class="flight-list"></div>
-        </div>
-
-        <div>
-          <h3 data-i18n="returnTitle">Рейс обратно</h3>
-          <div id="return-flights" class="flight-list"></div>
-        </div>
+        <label>
+          <span data-i18n="middleName">Отчество</span>
+          <input type="text" id="middle-name" placeholder="Nikolaevich / Николаевич">
+        </label>
       </div>
 
-      <section class="step nested">
-        <h3 data-i18n="seatPickTitle">Выбор мест</h3>
+      <div class="row">
+        <label>
+          <span data-i18n="passport">Серия и номер паспорта</span>
+          <input type="text" id="passport-no" placeholder="AA0000000" required>
+        </label>
 
-        <div class="seats-wrapper">
-          <div>
-            <h4 data-i18n="seatOut">Место туда</h4>
-            <div id="outbound-seats" class="seats-grid"></div>
-          </div>
+        <label>
+          <span data-i18n="birthDate">Дата рождения</span>
+          <input
+            type="text"
+            id="birth-date"
+            placeholder="ДД.ММ.ГГГГ"
+            inputmode="numeric"
+            pattern="\d{2}\.\d{2}\.\d{4}"
+            required
+          >
+        </label>
+      </div>
 
-          <div>
-            <h4 data-i18n="seatBack">Место обратно</h4>
-            <div id="return-seats" class="seats-grid"></div>
-          </div>
-        </div>
-      </section>
+      <div class="row">
+        <label>
+          <span data-i18n="phone">Телефон</span>
+          <input type="tel" id="phone" placeholder="+375XXXXXXXXX" required>
+        </label>
 
-      <section class="step nested">
-        <h3 data-i18n="confirmTitle">Подтверждение бронирования</h3>
+        <label>
+          <span data-i18n="email">E-mail</span>
+          <input type="email" id="email" placeholder="example@mail.com" required>
+        </label>
+      </div>
 
-        <form id="booking-form">
-          <div class="row">
-            <label data-i18n-label="bookCode">
-              Код из Telegram (бронирование)
-              <input type="text" id="book-code" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" required />
-            </label>
+      <div class="row">
+        <label>
+          <span data-i18n="regCode">Код из Telegram (регистрация)</span>
+          <input
+            type="text"
+            id="reg-code"
+            placeholder="000000"
+            inputmode="numeric"
+            required
+          >
+        </label>
+      </div>
 
-            <button type="button" id="book-get-code" data-i18n="getBookCode">Получить код</button>
-          </div>
+      <button type="submit" data-i18n="finishReg">
+        Завершить регистрацию
+      </button>
+    </form>
 
-          <input type="hidden" id="passenger-id" />
-          <input type="hidden" id="outbound-flight-id" />
-          <input type="hidden" id="return-flight-id" />
-          <input type="hidden" id="outbound-seat" />
-          <input type="hidden" id="return-seat" />
-          <input type="hidden" id="book-auth-request-id" />
+    <pre id="reg-result"></pre>
+  </section>
 
-          <button type="submit" data-i18n="book">Забронировать</button>
-        </form>
+</main>
 
-        <pre id="booking-result"></pre>
-      </section>
-    </section>
-  </main>
-
-  <script src="script.js"></script>
-
-  <!-- Мини-скрипт только для перевода лейблов (если хочешь — можно и в script.js перенести) -->
-  <script>
-    // Этот блок не конфликтует с твоим script.js.
-    // Он просто помогает переводить label-тексты, потому что textContent у label включает input.
-    const LABELS = {
-      ru: {
-        tgUserLabel: "Telegram @username",
-        lastName: "Фамилия",
-        firstName: "Имя",
-        middleName: "Отчество",
-        passport: "Серия и номер паспорта",
-        birthDate: "Дата рождения",
-        phone: "Телефон",
-        email: "E-mail",
-        regCode: "Код из Telegram (регистрация)",
-        from: "Откуда",
-        to: "Куда",
-        dateOut: "Дата туда",
-        dateBack: "Дата обратно",
-        bookCode: "Код из Telegram (бронирование)",
-      },
-      en: {
-        tgUserLabel: "Telegram @username",
-        lastName: "Last name",
-        firstName: "First name",
-        middleName: "Middle name",
-        passport: "Passport ID",
-        birthDate: "Birth date",
-        phone: "Phone",
-        email: "E-mail",
-        regCode: "Telegram code (registration)",
-        from: "From",
-        to: "To",
-        dateOut: "Depart date",
-        dateBack: "Return date",
-        bookCode: "Telegram code (booking)",
-      }
-    };
-
-    function applyLabelLang(lang) {
-      document.querySelectorAll("[data-i18n-label]").forEach(lab => {
-        const key = lab.getAttribute("data-i18n-label");
-        const inp = lab.querySelector("input,select");
-        const text = (LABELS[lang] && LABELS[lang][key]) ? LABELS[lang][key] : lab.firstChild.textContent.trim();
-        // Пересобираем label: текст + контрол
-        lab.innerHTML = "";
-        lab.append(document.createTextNode(text));
-        lab.append(inp);
-      });
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      // script.js хранит язык в localStorage 'lang' и переключает кнопку.
-      const lang = localStorage.getItem("lang") || "ru";
-      applyLabelLang(lang);
-
-      const btn = document.getElementById("lang-toggle");
-      if (btn) {
-        btn.addEventListener("click", () => {
-          const newLang = (localStorage.getItem("lang") || "ru") === "ru" ? "en" : "ru";
-          // script.js поменяет localStorage чуть позже, но мы перестрахуемся:
-          localStorage.setItem("lang", newLang);
-          applyLabelLang(newLang);
-        });
-      }
-    });
-  </script>
+<script src="script.js?v=9"></script>
 </body>
 </html>

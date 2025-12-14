@@ -380,3 +380,23 @@ pre{
   button{ width:100%; }
   .lang-btn{ width:auto; }
 }
+/* ===== Contrast boost: darker darks, same highlights ===== */
+:root{
+  --bg0:#010008;   /* было ~03010a */
+  --bg1:#040012;   /* было ~070017 */
+  --bg2:#0a001f;   /* было ~12002e */
+
+  --glass:rgba(255,255,255,.035);
+  --glass2:rgba(255,255,255,.025);
+
+  --stroke:rgba(255,255,255,.08);
+  --stroke2:rgba(255,255,255,.12);
+}
+
+body{
+  background:
+    radial-gradient(1200px 600px at 20% 0%, rgba(255,43,214,.16), transparent 60%),
+    radial-gradient(900px 520px at 80% 15%, rgba(124,58,237,.18), transparent 60%),
+    radial-gradient(900px 650px at 55% 110%, rgba(59,231,255,.08), transparent 65%),
+    linear-gradient(180deg, var(--bg0), var(--bg1) 45%, var(--bg2));
+}
