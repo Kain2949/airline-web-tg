@@ -1,3 +1,55 @@
+const I18N = {
+  ru: {
+    title: "Авиакомпания: регистрация и бронирование",
+    step1: "1. Подтверждение через Telegram",
+    getCode: "Получить код",
+    step2: "2. Регистрация пассажира",
+    finishReg: "Завершить регистрацию",
+    step3: "3. Бронирование рейса",
+    findFlights: "Найти рейсы",
+    getBookCode: "Получить код",
+    book: "Забронировать",
+  },
+  en: {
+    title: "Airline: registration & booking",
+    step1: "1. Telegram verification",
+    getCode: "Get code",
+    step2: "2. Passenger registration",
+    finishReg: "Finish registration",
+    step3: "3. Flight booking",
+    findFlights: "Search flights",
+    getBookCode: "Get code",
+    book: "Book",
+  }
+};
+
+let lang = localStorage.getItem("lang") || "ru";
+
+function applyLang() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (I18N[lang] && I18N[lang][key]) el.textContent = I18N[lang][key];
+  });
+
+  // кнопка показывает, на какой язык переключит
+  const btn = document.getElementById("lang-toggle");
+  if (btn) btn.textContent = (lang === "ru") ? "EN" : "RU";
+
+  localStorage.setItem("lang", lang);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("lang-toggle");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      lang = (lang === "ru") ? "en" : "ru";
+      applyLang();
+    });
+  }
+  applyLang();
+});
+
+
 // тут меняешь на URL сервера (ngrok и т.д.)
 const API_BASE = "https://kristan-labored-earsplittingly.ngrok-free.dev";
 
