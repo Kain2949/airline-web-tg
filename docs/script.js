@@ -1,322 +1,474 @@
 (() => {
   "use strict";
 
-  const el = (id) => document.getElementById(id);
+  const $ = (sel, root = document) => root.querySelector(sel);
 
-  const toast = el("toast");
-  const toastTitle = el("toastTitle");
-  const toastText = el("toastText");
-  const toastClose = el("toastClose");
+  const LS_LANG = "airline_lang";
+  const LS_API  = "airline_api_base";
 
-  const apiModal = el("apiModal");
-  const apiInput = el("apiInput");
-  const apiCancel = el("apiCancel");
-  const apiSave = el("apiSave");
+  const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
 
-  const tgUsername = el("tgUsername");
-  const btnAuthStart = el("btnAuthStart");
-
-  const lastName = el("lastName");
-  const firstName = el("firstName");
-  const middleName = el("middleName");
-  const passportId = el("passportId");
-  const birthDate = el("birthDate");
-  const phone = el("phone");
-  const email = el("email");
-  const regCode = el("regCode");
-  const btnRegister = el("btnRegister");
-
-  const langBtn = el("langBtn");
-
-  // -------- API base (ngrok) without leaking it into the page -----------
-  function normalizeBase(s) {
-    return (s || "").trim().replace(/\/+$/, "");
-  }
-
-  function getApiBase() {
-    const u = new URL(window.location.href);
-    const qp = u.searchParams.get("api");
-    if (qp) {
-      const base = normalizeBase(qp);
-      localStorage.setItem("api_base", base);
-      return base;
-    }
-    const stored = localStorage.getItem("api_base");
-    if (stored) return normalizeBase(stored);
-
-    // local dev
-    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-      return "http://localhost:8000";
-    }
-    return null;
-  }
-
-  let API_BASE = getApiBase();
-
-  function showApiModal() {
-    apiModal.hidden = false;
-    apiInput.value = "";
-    apiInput.focus();
-  }
-
-  function hideApiModal() {
-    apiModal.hidden = true;
-  }
-
-  apiCancel?.addEventListener("click", () => {
-    hideApiModal();
-    showToast("Ошибка", "Без адреса сервера ничего не заработает. Укажи ngrok URL.");
-  });
-
-  apiSave?.addEventListener("click", () => {
-    const v = normalizeBase(apiInput.value);
-    if (!v.startsWith("http")) {
-      showToast("Ошибка", "Это не похоже на URL. Пример: https://xxxx.ngrok-free.dev");
-      return;
-    }
-    localStorage.setItem("api_base", v);
-    API_BASE = v;
-    hideApiModal();
-    showToast("Ок", "Backend URL сохранён.");
-  });
-
-  // -------------------- UI: toast -----------------------
-  let toastTimer = null;
-  function showToast(title, text) {
-    toastTitle.textContent = title;
-    toastText.textContent = text;
-    toast.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast.hidden = true), 4500);
-  }
-
-  toastClose?.addEventListener("click", () => (toast.hidden = true));
-
-  // -------------------- i18n ----------------------------
-  const dict = {
+  const I18N = {
     ru: {
       title: "Авиакомпания: регистрация и бронирование",
+      server: "Сервер",
       step1: "1. Подтверждение через Telegram",
-      tgLabel: "Telegram @username",
-      tgHint: "Например: @Kain_cr",
-      getCode: "Получить код",
       step2: "2. Регистрация пассажира",
-      last: "Фамилия",
-      first: "Имя",
-      middle: "Отчество",
-      passport: "Серия и номер паспорта",
-      passHint: "Формат: AA0000000",
-      birth: "Дата рождения",
+      tgUserLabel: "Telegram @username",
+      tgUserHint: "Например: @Kain_cr",
+      getCode: "Получить код",
+      lastName: "Фамилия",
+      firstName: "Имя",
+      middleName: "Отчество",
+      passportId: "Серия и номер паспорта",
+      passportHint: "Формат: AA0000000",
+      birthDate: "Дата рождения",
       birthHint: "Выбери дату в календаре",
       phone: "Телефон",
       email: "E-mail",
-      regCode: "Код из Telegram (регистрация)",
-      regHint: "6 цифр",
+      tgCodeReg: "Код из Telegram (регистрация)",
       finishReg: "Завершить регистрацию",
-      msgSent: "Код отправлен в Telegram.",
-      msgNoServer: "Сервер не настроен. Нужен ngrok URL.",
-      msgBadUser: "Введи корректный @username.",
-      msgFail: "Не удалось связаться с сервером.",
-      msgOk: "Готово.",
+      footerHint: "Если ngrok меняется — нажми “Сервер” и вставь новый URL.",
+      apiExplain: "Вставь ngrok URL сервера (без /docs). Я сохраню и больше не буду зудеть.",
+      apiTip: "Можно ещё открыть так: ...?api=https://xxxx.ngrok-free.dev",
+      cancel: "Отмена",
+      save: "Сохранить",
+
+      toastSaved: "Сервер сохранён.",
+      needServer: "Сначала укажи адрес сервера (ngrok).",
+      badUrl: "Это не похоже на нормальный URL.",
+      badUser: "Введи Telegram username. Формат: @username",
+      codeSent: "Код отправлен в Telegram.",
+      netFail: "Не удалось достучаться до сервера.",
+      unknownErr: "Что-то пошло не так."
     },
     en: {
       title: "Airline: registration & booking",
+      server: "Server",
       step1: "1. Telegram verification",
-      tgLabel: "Telegram @username",
-      tgHint: "Example: @Kain_cr",
-      getCode: "Get code",
       step2: "2. Passenger registration",
-      last: "Last name",
-      first: "First name",
-      middle: "Middle name",
-      passport: "Passport ID",
-      passHint: "Format: AA0000000",
-      birth: "Birth date",
-      birthHint: "Pick a date in the calendar",
+      tgUserLabel: "Telegram @username",
+      tgUserHint: "Example: @Kain_cr",
+      getCode: "Get code",
+      lastName: "Last name",
+      firstName: "First name",
+      middleName: "Middle name",
+      passportId: "Passport ID",
+      passportHint: "Format: AA0000000",
+      birthDate: "Birth date",
+      birthHint: "Pick date in calendar",
       phone: "Phone",
       email: "E-mail",
-      regCode: "Telegram code (registration)",
-      regHint: "6 digits",
+      tgCodeReg: "Telegram code (registration)",
       finishReg: "Finish registration",
-      msgSent: "Code sent to Telegram.",
-      msgNoServer: "Backend is not set. You need an ngrok URL.",
-      msgBadUser: "Enter a valid @username.",
-      msgFail: "Failed to reach the server.",
-      msgOk: "Done.",
-    },
+      footerHint: "If ngrok changes — click “Server” and paste new URL.",
+      apiExplain: "Paste ngrok backend URL (without /docs). I’ll save it.",
+      apiTip: "You can also open: ...?api=https://xxxx.ngrok-free.dev",
+      cancel: "Cancel",
+      save: "Save",
+
+      toastSaved: "Server saved.",
+      needServer: "Set backend URL first (ngrok).",
+      badUrl: "That URL looks wrong.",
+      badUser: "Enter Telegram username like @username",
+      codeSent: "Code sent to Telegram.",
+      netFail: "Cannot reach the server.",
+      unknownErr: "Something went wrong."
+    }
   };
 
+  function t(key) {
+    const lang = getLang();
+    return (I18N[lang] && I18N[lang][key]) || I18N.ru[key] || key;
+  }
+
   function getLang() {
-    return localStorage.getItem("lang") || "ru";
-  }
-  function setLang(v) {
-    localStorage.setItem("lang", v);
-  }
-  function applyLang() {
-    const L = dict[getLang()];
-    el("t_title").textContent = L.title;
-    el("t_step1").textContent = L.step1;
-    el("t_tgLabel").textContent = L.tgLabel;
-    el("t_tgHint").textContent = L.tgHint;
-    el("t_getCode").textContent = L.getCode;
-
-    el("t_step2").textContent = L.step2;
-    el("t_last").textContent = L.last;
-    el("t_first").textContent = L.first;
-    el("t_middle").textContent = L.middle;
-    el("t_passport").textContent = L.passport;
-    el("t_passHint").textContent = L.passHint;
-    el("t_birth").textContent = L.birth;
-    el("t_birthHint").textContent = L.birthHint;
-    el("t_phone").textContent = L.phone;
-    el("t_email").textContent = L.email;
-    el("t_regCode").textContent = L.regCode;
-    el("t_regHint").textContent = L.regHint;
-    el("t_finishReg").textContent = L.finishReg;
-
-    langBtn.textContent = getLang() === "ru" ? "EN" : "RU";
+    const saved = (localStorage.getItem(LS_LANG) || "").toLowerCase();
+    return saved === "en" ? "en" : "ru";
   }
 
-  langBtn?.addEventListener("click", () => {
-    const next = getLang() === "ru" ? "en" : "ru";
-    setLang(next);
-    applyLang();
-  });
+  function setLang(lang) {
+    localStorage.setItem(LS_LANG, lang);
+    document.documentElement.lang = lang;
 
-  // -------------------- helpers -------------------------
-  function cleanUsername(s) {
-    s = (s || "").trim();
-    if (!s) return "";
-    if (!s.startsWith("@")) s = "@" + s;
-    // very basic validation
-    if (!/^@[A-Za-z0-9_]{5,32}$/.test(s)) return "";
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const k = el.getAttribute("data-i18n");
+      if (k) el.innerHTML = t(k);
+    });
+
+    // button label = opposite language
+    const langBtn = $("#langBtn");
+    if (langBtn) langBtn.textContent = (lang === "ru") ? "EN" : "RU";
+  }
+
+  function normalizeBase(u) {
+    if (!u) return "";
+    let s = String(u).trim();
+
+    // remove /docs or /docs/ if user пастит со swagger
+    s = s.replace(/\/docs\/?$/i, "");
+    // remove trailing slashes
+    s = s.replace(/\/+$/g, "");
+
+    // if no protocol, add https
+    if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+
     return s;
   }
 
-  async function fetchJson(path, payload) {
+  function getApiBaseFromQuery() {
+    const p = new URLSearchParams(location.search);
+    const api = p.get("api");
+    return api ? normalizeBase(api) : "";
+  }
+
+  function getApiBase() {
+    const q = getApiBaseFromQuery();
+    if (q) {
+      localStorage.setItem(LS_API, q);
+      return q;
+    }
+    const saved = localStorage.getItem(LS_API) || "";
+    return saved ? normalizeBase(saved) : "";
+  }
+
+  let API_BASE = "";
+
+  // UI helpers
+  function setMsg(el, type, text) {
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.classList.remove("ok", "err");
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.classList.remove("ok", "err");
+    el.classList.add(type === "ok" ? "ok" : "err");
+    el.textContent = text;
+  }
+
+  let toastTimer = null;
+  function toast(text) {
+    const box = $("#toast");
+    const txt = $("#toastText");
+    if (!box || !txt) return;
+    txt.textContent = text;
+    box.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { box.hidden = true; }, 2200);
+  }
+
+  // Modal (backend url)
+  function openApiModal(prefill = "") {
+    const back = $("#apiModal");
+    const inp = $("#apiInput");
+    if (!back || !inp) return;
+
+    inp.value = prefill || API_BASE || "";
+    back.hidden = false;
+
+    // focus
+    setTimeout(() => inp.focus(), 30);
+  }
+
+  function closeApiModal() {
+    const back = $("#apiModal");
+    if (back) back.hidden = true;
+  }
+
+  function isValidUrl(u) {
+    try {
+      const x = new URL(u);
+      return x.protocol === "http:" || x.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  // Network
+  async function apiFetch(path, opts = {}) {
     if (!API_BASE) throw new Error("NO_API_BASE");
 
     const url = API_BASE + path;
+
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
+    const timeout = setTimeout(() => ctrl.abort(), 12000);
 
     try {
       const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        ...opts,
         mode: "cors",
         signal: ctrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.headers || {})
+        }
       });
 
-      const text = await res.text();
+      const raw = await res.text();
       let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+      try { data = raw ? JSON.parse(raw) : null; } catch { /* ignore */ }
 
       if (!res.ok) {
         const err = new Error("HTTP_" + res.status);
         err.status = res.status;
         err.data = data;
-        // детали в консоль, не в UI
-        console.error("API error:", res.status, data || text);
+        err.raw = raw;
         throw err;
       }
+
       return data;
     } finally {
-      clearTimeout(t);
+      clearTimeout(timeout);
     }
   }
 
-  // -------------------- actions -------------------------
-  btnAuthStart?.addEventListener("click", async () => {
-    const L = dict[getLang()];
+  function prettyValidation(err) {
+    // FastAPI often returns {detail:[{loc:..., msg:...}, ...]}
+    const d = err && err.data;
+    if (d && Array.isArray(d.detail) && d.detail.length) {
+      // собрать человечески, без слива всей структуры
+      const parts = d.detail
+        .map(x => x && x.msg ? String(x.msg) : "")
+        .filter(Boolean);
+      if (parts.length) return parts[0];
+    }
+    if (d && typeof d.detail === "string") return d.detail;
+    if (d && typeof d.message === "string") return d.message;
+    return "";
+  }
 
-    if (!API_BASE) {
-      showToast("Backend", L.msgNoServer);
-      showApiModal();
-      return;
+  // Stars (many)
+  function initStars() {
+    const c = $("#stars");
+    if (!c) return;
+    const ctx = c.getContext("2d", { alpha: true });
+    if (!ctx) return;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      c.width = Math.floor(window.innerWidth * dpr);
+      c.height = Math.floor(window.innerHeight * dpr);
+      c.style.width = window.innerWidth + "px";
+      c.style.height = window.innerHeight + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
     }
 
-    const u = cleanUsername(tgUsername.value);
-    if (!u) {
-      showToast("Ошибка", L.msgBadUser);
-      tgUsername.focus();
-      return;
-    }
+    function draw() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      ctx.clearRect(0, 0, w, h);
 
-    btnAuthStart.disabled = true;
-    try {
-      // IMPORTANT: FastAPI ждёт именно эти поля (судя по твоему 422)
-      await fetchJson("/api/auth/start", {
-        telegram_username: u,
-        purpose: "registration",
-      });
-      showToast("Ок", L.msgSent);
-    } catch (e) {
-      if (e && e.message === "NO_API_BASE") {
-        showToast("Backend", L.msgNoServer);
-        showApiModal();
-      } else if (e && e.status === 422) {
-        showToast("Ошибка", "Сервер не принял данные. Проверь @username.");
-      } else {
-        showToast("Ошибка", L.msgFail);
+      // density: много звёзд, но без убийства FPS
+      const count = Math.max(350, Math.min(2600, Math.floor((w * h) / 1800)));
+
+      for (let i = 0; i < count; i++) {
+        const x = Math.random() * w;
+        const y = Math.random() * h;
+        const r = Math.random() < 0.92 ? (Math.random() * 1.2 + 0.2) : (Math.random() * 1.8 + 0.8);
+        const a = Math.random() * 0.55 + 0.18;
+
+        // лёгкий пурпурный оттенок части звёзд
+        const tint = Math.random();
+        let col = `rgba(255,255,255,${a})`;
+        if (tint < 0.18) col = `rgba(214,190,255,${a})`;
+        else if (tint < 0.26) col = `rgba(255,190,244,${a})`;
+
+        ctx.beginPath();
+        ctx.fillStyle = col;
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
       }
-    } finally {
-      btnAuthStart.disabled = false;
     }
-  });
 
-  btnRegister?.addEventListener("click", async () => {
-    const L = dict[getLang()];
-    if (!API_BASE) {
-      showToast("Backend", L.msgNoServer);
-      showApiModal();
+    window.addEventListener("resize", resize, { passive: true });
+    resize();
+  }
+
+  // App actions
+  async function sendCode() {
+    const msg = $("#authMsg");
+    setMsg(msg, "ok", "");
+    const inp = $("#tgUsername");
+    const usernameRaw = (inp ? inp.value : "").trim();
+
+    if (!usernameRaw) {
+      setMsg(msg, "err", t("badUser"));
       return;
     }
 
-    const u = cleanUsername(tgUsername.value);
-    if (!u) { showToast("Ошибка", L.msgBadUser); tgUsername.focus(); return; }
+    let username = usernameRaw;
+    if (!username.startsWith("@")) username = "@" + username;
+    if (!/^@[a-zA-Z0-9_]{4,64}$/.test(username)) {
+      setMsg(msg, "err", t("badUser"));
+      return;
+    }
 
-    const payload = {
-      telegram_username: u,
-      code: (regCode.value || "").trim(),
-      last_name: (lastName.value || "").trim(),
-      first_name: (firstName.value || "").trim(),
-      middle_name: (middleName.value || "").trim() || null,
-      passport_id: (passportId.value || "").trim(),
-      birth_date: birthDate.value || null, // yyyy-mm-dd
-      phone: (phone.value || "").trim(),
-      email: (email.value || "").trim(),
+    try {
+      const payload = {
+        telegram_username: username,
+        purpose: "registration"
+      };
+
+      await apiFetch("/api/auth/start", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      setMsg(msg, "ok", t("codeSent"));
+      toast(t("codeSent"));
+    } catch (e) {
+      if (DEBUG) console.error(e);
+
+      if (String(e.message) === "NO_API_BASE") {
+        setMsg(msg, "err", t("needServer"));
+        openApiModal();
+        return;
+      }
+
+      if (e.name === "AbortError") {
+        setMsg(msg, "err", t("netFail"));
+        return;
+      }
+
+      const v = prettyValidation(e);
+      if (e.status === 422 && v) {
+        setMsg(msg, "err", v);
+        return;
+      }
+
+      setMsg(msg, "err", t("netFail"));
+    }
+  }
+
+  // Регистрацию оставила “тихо”: без слива ошибок на экран.
+  // Эндпоинт у тебя может отличаться — но UI не будет показывать внутренности сервера.
+  async function registerPassenger() {
+    const msg = $("#regMsg");
+    setMsg(msg, "ok", "");
+
+    const data = {
+      telegram_username: (($("#tgUsername")?.value || "").trim().startsWith("@") ? ($("#tgUsername")?.value || "").trim() : "@" + (($("#tgUsername")?.value || "").trim())),
+      last_name: ($("#lastName")?.value || "").trim(),
+      first_name: ($("#firstName")?.value || "").trim(),
+      middle_name: ($("#middleName")?.value || "").trim(),
+      passport_id: ($("#passportId")?.value || "").trim(),
+      birth_date: ($("#birthDate")?.value || "").trim(),
+      phone: ($("#phone")?.value || "").trim(),
+      email: ($("#email")?.value || "").trim(),
+      telegram_code: ($("#tgCodeReg")?.value || "").trim()
     };
 
-    // мягкая валидация без истерик
-    if (!payload.last_name || !payload.first_name || !payload.passport_id || !payload.birth_date || !payload.phone || !payload.email || !payload.code) {
-      showToast("Ошибка", "Заполни обязательные поля и введи код.");
+    // минимальные проверки
+    if (!data.last_name || !data.first_name || !data.passport_id || !data.birth_date || !data.telegram_code) {
+      setMsg(msg, "err", t("unknownErr"));
       return;
     }
 
-    btnRegister.disabled = true;
     try {
-      // Если у тебя эндпоинт называется иначе — поменяй только ЭТУ строку.
-      await fetchJson("/api/register", payload);
-      showToast("Ок", L.msgOk);
+      // попробуем самый вероятный путь
+      await apiFetch("/api/passengers/register", {
+        method: "POST",
+        body: JSON.stringify(data)
+      });
+
+      setMsg(msg, "ok", "OK");
+      toast("OK");
     } catch (e) {
-      if (e && e.status === 422) {
-        showToast("Ошибка", "Сервер ругается на поля. Проверь формат данных.");
-      } else {
-        showToast("Ошибка", L.msgFail);
+      if (DEBUG) console.error(e);
+
+      if (String(e.message) === "NO_API_BASE") {
+        setMsg(msg, "err", t("needServer"));
+        openApiModal();
+        return;
       }
-    } finally {
-      btnRegister.disabled = false;
+
+      const v = prettyValidation(e);
+      if (e.status === 404) {
+        setMsg(msg, "err", "На сервере нет /api/passengers/register (путь отличается).");
+        return;
+      }
+      if (e.status === 422 && v) {
+        setMsg(msg, "err", v);
+        return;
+      }
+
+      setMsg(msg, "err", t("netFail"));
     }
-  });
-
-  // init
-  applyLang();
-
-  // if backend isn't configured - ask once (no leaking)
-  if (!API_BASE) {
-    // не мешаем сразу, только если пользователь нажмёт кнопку
-    console.warn("API_BASE is not set. Use ?api=... or set in modal.");
   }
+
+  function wireUi() {
+    // language
+    $("#langBtn")?.addEventListener("click", () => {
+      const next = getLang() === "ru" ? "en" : "ru";
+      setLang(next);
+    });
+
+    // server open
+    $("#serverBtn")?.addEventListener("click", () => openApiModal());
+
+    // modal close controls
+    $("#apiClose")?.addEventListener("click", closeApiModal);
+    $("#apiCancel")?.addEventListener("click", closeApiModal);
+
+    // click outside = close
+    $("#apiModal")?.addEventListener("mousedown", (e) => {
+      if (e.target && e.target.id === "apiModal") closeApiModal();
+    });
+
+    // esc = close
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeApiModal();
+    });
+
+    // save api
+    $("#apiSave")?.addEventListener("click", () => {
+      const inp = $("#apiInput");
+      const raw = (inp ? inp.value : "").trim();
+      const base = normalizeBase(raw);
+
+      if (!base || !isValidUrl(base)) {
+        toast(t("badUrl"));
+        return;
+      }
+
+      API_BASE = base;
+      localStorage.setItem(LS_API, base);
+      closeApiModal();
+      toast(t("toastSaved"));
+    });
+
+    // enter in api input = save
+    $("#apiInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("#apiSave")?.click();
+    });
+
+    // actions
+    $("#btnGetCode")?.addEventListener("click", sendCode);
+    $("#btnRegister")?.addEventListener("click", registerPassenger);
+
+    // Telegram WebApp (не ломаемся, если его нет)
+    try {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+      }
+    } catch { /* ignore */ }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setLang(getLang());
+    initStars();
+
+    API_BASE = getApiBase();
+
+    wireUi();
+
+    // показываем модалку только если реально нет сервера
+    if (!API_BASE) openApiModal();
+  });
 })();

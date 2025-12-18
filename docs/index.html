@@ -1,126 +1,154 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Airline</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>Airline — registration & booking</title>
   <link rel="stylesheet" href="style2.css" />
+  <script defer src="script.js"></script>
 </head>
 
 <body>
-  <div class="stars" aria-hidden="true"></div>
-  <div class="vignette" aria-hidden="true"></div>
+  <canvas id="stars" aria-hidden="true"></canvas>
 
-  <main class="page">
+  <div class="app">
     <header class="topbar">
-      <button class="lang" id="langBtn" type="button" aria-label="Switch language">EN</button>
-      <h1 class="title" id="t_title">Авиакомпания: регистрация и бронирование</h1>
+      <button class="chip" id="langBtn" type="button" aria-label="Toggle language">EN</button>
+      <button class="chip chip-ghost" id="serverBtn" type="button" aria-label="Server settings">
+        <span data-i18n="server">Сервер</span>
+      </button>
     </header>
 
-    <section class="card">
-      <div class="cardHead">
-        <h2 class="cardTitle" id="t_step1">1. Подтверждение через Telegram</h2>
-      </div>
+    <main class="wrap">
+      <h1 class="title" data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
 
-      <div class="row">
-        <div class="field grow">
-          <label class="label" for="tgUsername" id="t_tgLabel">Telegram @username</label>
-          <input class="input" id="tgUsername" autocomplete="off" inputmode="text"
-                 placeholder="@username" />
-          <div class="hint" id="t_tgHint">Например: @Kain_cr</div>
+      <!-- 1) AUTH -->
+      <section class="card" id="authCard">
+        <div class="cardHead">
+          <h2 data-i18n="step1">1. Подтверждение через Telegram</h2>
         </div>
 
-        <button class="btn primary" id="btnAuthStart" type="button">
-          <span id="t_getCode">Получить код</span>
-        </button>
-      </div>
-    </section>
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="tgUsername" data-i18n="tgUserLabel">Telegram @username</label>
+            <input
+              id="tgUsername"
+              type="text"
+              inputmode="text"
+              autocomplete="username"
+              placeholder="@Kain_cr"
+            />
+            <div class="hint" data-i18n="tgUserHint">Например: @Kain_cr</div>
+          </div>
 
-    <section class="card">
-      <div class="cardHead">
-        <h2 class="cardTitle" id="t_step2">2. Регистрация пассажира</h2>
-      </div>
-
-      <div class="grid3">
-        <div class="field">
-          <label class="label" for="lastName" id="t_last">Фамилия</label>
-          <input class="input" id="lastName" autocomplete="family-name" placeholder="Ivanov / Иванов" />
+          <div class="field fieldBtn">
+            <label class="srOnly">Action</label>
+            <button class="btn btn-primary" id="btnGetCode" type="button" data-i18n="getCode">Получить код</button>
+          </div>
         </div>
 
-        <div class="field">
-          <label class="label" for="firstName" id="t_first">Имя</label>
-          <input class="input" id="firstName" autocomplete="given-name" placeholder="Petr / Пётр" />
+        <div class="msg" id="authMsg" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <!-- 2) REG -->
+      <section class="card" id="regCard">
+        <div class="cardHead">
+          <h2 data-i18n="step2">2. Регистрация пассажира</h2>
         </div>
 
-        <div class="field">
-          <label class="label" for="middleName" id="t_middle">Отчество</label>
-          <input class="input" id="middleName" autocomplete="additional-name" placeholder="Nikolaevich / Николаевич" />
+        <div class="grid grid-3">
+          <div class="field">
+            <label for="lastName" data-i18n="lastName">Фамилия</label>
+            <input id="lastName" type="text" autocomplete="family-name" placeholder="Ivanov / Иванов" />
+          </div>
+          <div class="field">
+            <label for="firstName" data-i18n="firstName">Имя</label>
+            <input id="firstName" type="text" autocomplete="given-name" placeholder="Petr / Пётр" />
+          </div>
+          <div class="field">
+            <label for="middleName" data-i18n="middleName">Отчество</label>
+            <input id="middleName" type="text" autocomplete="additional-name" placeholder="Nikolaevich / Николаевич" />
+          </div>
         </div>
+
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="passportId" data-i18n="passportId">Серия и номер паспорта</label>
+            <input id="passportId" type="text" autocomplete="off" placeholder="AA0000000" />
+            <div class="hint" data-i18n="passportHint">Формат: AA0000000</div>
+          </div>
+
+          <div class="field">
+            <label for="birthDate" data-i18n="birthDate">Дата рождения</label>
+            <input id="birthDate" type="date" autocomplete="bday" />
+            <div class="hint" data-i18n="birthHint">Выбери дату в календаре</div>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="phone" data-i18n="phone">Телефон</label>
+            <input id="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+375XXXXXXXXX" />
+          </div>
+          <div class="field">
+            <label for="email" data-i18n="email">E-mail</label>
+            <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="example@mail.com" />
+          </div>
+        </div>
+
+        <div class="grid grid-1">
+          <div class="field">
+            <label for="tgCodeReg" data-i18n="tgCodeReg">Код из Telegram (регистрация)</label>
+            <input id="tgCodeReg" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="btnRegister" type="button" data-i18n="finishReg">Завершить регистрацию</button>
+        </div>
+
+        <div class="msg" id="regMsg" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <footer class="footer">
+        <div class="muted" data-i18n="footerHint">
+          Если ngrok меняется — нажми “Сервер” и вставь новый URL.
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- MODAL: API BASE -->
+  <div class="modalBack" id="apiModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="apiTitle">
+      <div class="modalTop">
+        <div class="modalTitle" id="apiTitle">Backend URL</div>
+        <button class="iconBtn" id="apiClose" type="button" aria-label="Close">✕</button>
       </div>
 
-      <div class="grid2">
-        <div class="field">
-          <label class="label" for="passportId" id="t_passport">Серия и номер паспорта</label>
-          <input class="input" id="passportId" autocomplete="off" inputmode="text" placeholder="AA0000000" />
-          <div class="hint" id="t_passHint">Формат: AA0000000</div>
+      <div class="modalBody">
+        <div class="modalText" data-i18n="apiExplain">
+          Вставь ngrok URL сервера (без <b>/docs</b>). Я сохраню и больше не буду зудеть.
         </div>
 
-        <div class="field">
-          <label class="label" for="birthDate" id="t_birth">Дата рождения</label>
-          <input class="input" id="birthDate" type="date" />
-          <div class="hint" id="t_birthHint">Выбери дату в календаре</div>
-        </div>
-      </div>
+        <input id="apiInput" class="modalInput" type="url" inputmode="url" placeholder="https://xxxx.ngrok-free.dev" />
 
-      <div class="grid2">
-        <div class="field">
-          <label class="label" for="phone" id="t_phone">Телефон</label>
-          <input class="input" id="phone" autocomplete="tel" inputmode="tel" placeholder="+375XXXXXXXXX" />
+        <div class="modalActions">
+          <button class="btn btn-secondary" id="apiCancel" type="button" data-i18n="cancel">Отмена</button>
+          <button class="btn btn-primary" id="apiSave" type="button" data-i18n="save">Сохранить</button>
         </div>
 
-        <div class="field">
-          <label class="label" for="email" id="t_email">E-mail</label>
-          <input class="input" id="email" autocomplete="email" inputmode="email" placeholder="example@mail.com" />
+        <div class="hint" data-i18n="apiTip">
+          Можно ещё открыть так: <span class="mono">...?api=https://xxxx.ngrok-free.dev</span>
         </div>
       </div>
-
-      <div class="field">
-        <label class="label" for="regCode" id="t_regCode">Код из Telegram (регистрация)</label>
-        <input class="input" id="regCode" autocomplete="one-time-code" inputmode="numeric" placeholder="000000" maxlength="6" />
-        <div class="hint" id="t_regHint">6 цифр</div>
-      </div>
-
-      <div class="actions">
-        <button class="btn primary wide" id="btnRegister" type="button">
-          <span id="t_finishReg">Завершить регистрацию</span>
-        </button>
-      </div>
-    </section>
-  </main>
-
-  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
-    <div class="toastInner">
-      <div class="toastTitle" id="toastTitle">Сообщение</div>
-      <div class="toastText" id="toastText">...</div>
-      <button class="toastX" id="toastClose" type="button" aria-label="Close">×</button>
     </div>
   </div>
 
-  <div class="modal" id="apiModal" hidden>
-    <div class="modalCard">
-      <div class="modalTitle">Backend URL</div>
-      <div class="modalText">
-        Ты открыл сайт без адреса сервера. Один раз укажи ngrok URL — и я запомню.
-      </div>
-      <input class="input" id="apiInput" placeholder="https://xxxx.ngrok-free.dev" />
-      <div class="modalActions">
-        <button class="btn ghost" id="apiCancel" type="button">Отмена</button>
-        <button class="btn primary" id="apiSave" type="button">Сохранить</button>
-      </div>
-      <div class="hint">Либо открой так: <span class="mono">...?api=https://xxxx.ngrok-free.dev</span></div>
-    </div>
+  <!-- TOAST -->
+  <div class="toast" id="toast" hidden>
+    <div class="toastText" id="toastText">Ok</div>
   </div>
-
-  <script src="script.js"></script>
 </body>
 </html>
