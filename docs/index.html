@@ -1,88 +1,170 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="color-scheme" content="dark" />
-  <title>Airline</title>
-  <link rel="stylesheet" href="style2.css" />
-  <script defer src="script.js"></script>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Авиакомпания: регистрация и бронирование</title>
+  <link rel="stylesheet" href="style2.css"/>
 </head>
 <body>
-  <canvas id="stars" aria-hidden="true"></canvas>
+  <div class="bg-glow"></div>
 
-  <main class="page">
-    <header class="top">
-      <h1 class="title" data-i18n="title">Регистрация на рейс</h1>
-      <button class="lang" id="langBtn" type="button">EN</button>
-    </header>
+  <header class="topbar">
+    <button id="langBtn" class="chip" type="button">EN</button>
+  </header>
 
+  <main class="wrap">
+    <h1 class="title" data-i18n="title">Авиакомпания: регистрация и бронирование</h1>
+
+    <!-- 1. Telegram -->
     <section class="card">
-      <h2 class="h2" data-i18n="tgTitle">Telegram подтверждение</h2>
+      <h2 class="card-title" data-i18n="tg_title">1. Подтверждение через Telegram</h2>
 
       <div class="row">
-        <div class="field grow">
-          <label class="lbl" for="tgUser" data-i18n="tgUser">Telegram @username</label>
-          <input class="inp" id="tgUser" placeholder="@Kain_cr" autocomplete="off" />
-          <div class="hint" data-i18n="tgHint">Сначала открой бота и нажми /start</div>
-        </div>
-        <button class="btn" id="btnCode" type="button" data-i18n="getCode">Получить код</button>
+        <label class="field">
+          <span class="label" data-i18n="tg_label">Telegram @username</span>
+          <input id="tgUsername" class="input" placeholder="@username" autocomplete="off"/>
+          <small class="hint" data-i18n="tg_hint">Если ты в Telegram WebApp — я подхвачу username автоматически.</small>
+        </label>
+
+        <button id="btnGetRegCode" class="btn btn-primary" type="button" data-i18n="btn_get_code">
+          Получить код
+        </button>
       </div>
 
-      <div class="msg" id="m1" hidden></div>
+      <div class="muted">
+        <span data-i18n="tg_info_1">Сначала открой бота и нажми</span> <b>/start</b>.
+        <span data-i18n="tg_info_2">Иначе он не сможет писать тебе коды.</span>
+      </div>
     </section>
 
+    <!-- 2. Registration -->
     <section class="card">
-      <h2 class="h2" data-i18n="regTitle">Регистрация пассажира</h2>
+      <h2 class="card-title" data-i18n="reg_title">2. Регистрация пассажира</h2>
 
       <div class="grid3">
-        <div class="field">
-          <label class="lbl" for="ln" data-i18n="ln">Фамилия</label>
-          <input class="inp" id="ln" placeholder="Ivanov / Иванов" />
-        </div>
-        <div class="field">
-          <label class="lbl" for="fn" data-i18n="fn">Имя</label>
-          <input class="inp" id="fn" placeholder="Petr / Пётр" />
-        </div>
-        <div class="field">
-          <label class="lbl" for="mn" data-i18n="mn">Отчество</label>
-          <input class="inp" id="mn" placeholder="Nikolaevich / Николаевич" />
-        </div>
+        <label class="field">
+          <span class="label" data-i18n="last_name">Фамилия</span>
+          <input id="lastName" class="input" placeholder="Ivanov / Иванов"/>
+        </label>
+        <label class="field">
+          <span class="label" data-i18n="first_name">Имя</span>
+          <input id="firstName" class="input" placeholder="Petr / Пётр"/>
+        </label>
+        <label class="field">
+          <span class="label" data-i18n="middle_name">Отчество</span>
+          <input id="middleName" class="input" placeholder="Nikolaevich / Николаевич"/>
+        </label>
       </div>
 
       <div class="grid2">
-        <div class="field">
-          <label class="lbl" for="pp" data-i18n="pp">Серия и номер</label>
-          <input class="inp" id="pp" placeholder="AA0000000" autocomplete="off" />
-          <div class="hint" data-i18n="ppHint">подсказка: AA0000000</div>
-        </div>
-        <div class="field">
-          <label class="lbl" for="bd" data-i18n="bd">Дата рождения</label>
-          <input class="inp" id="bd" type="date" />
-        </div>
+        <label class="field">
+          <span class="label" data-i18n="passport">Серия и номер паспорта</span>
+          <input id="passportNo" class="input" placeholder="MP1234567"/>
+        </label>
+        <label class="field">
+          <span class="label" data-i18n="birth_date">Дата рождения</span>
+          <input id="birthDate" class="input" type="date"/>
+        </label>
       </div>
 
       <div class="grid2">
-        <div class="field">
-          <label class="lbl" for="ph" data-i18n="ph">Телефон</label>
-          <input class="inp" id="ph" placeholder="+375XXXXXXXXX" inputmode="tel" />
-        </div>
-        <div class="field">
-          <label class="lbl" for="em" data-i18n="em">E-mail</label>
-          <input class="inp" id="em" placeholder="example@mail.com" inputmode="email" />
-        </div>
+        <label class="field">
+          <span class="label" data-i18n="phone">Телефон</span>
+          <input id="phone" class="input" placeholder="+375XXXXXXXXX"/>
+        </label>
+        <label class="field">
+          <span class="label" data-i18n="email">E-mail</span>
+          <input id="email" class="input" placeholder="example@mail.com"/>
+        </label>
       </div>
 
       <div class="row">
-        <div class="field grow">
-          <label class="lbl" for="code" data-i18n="code">Код из Telegram</label>
-          <input class="inp" id="code" placeholder="000000" inputmode="numeric" maxlength="6" />
-        </div>
-        <button class="btn" id="btnReg" type="button" data-i18n="finish">Завершить</button>
+        <label class="field">
+          <span class="label" data-i18n="reg_code">Код из Telegram (регистрация)</span>
+          <input id="regCode" class="input" inputmode="numeric" maxlength="6" placeholder="000000"/>
+        </label>
+
+        <button id="btnRegister" class="btn btn-primary" type="button" data-i18n="btn_finish_reg">
+          Завершить регистрацию
+        </button>
       </div>
 
-      <div class="msg" id="m2" hidden></div>
+      <div id="regOk" class="ok hidden" data-i18n="reg_ok">✅ Регистрация завершена. Можно бронировать рейсы.</div>
+    </section>
+
+    <!-- 3. Booking -->
+    <section id="bookingCard" class="card hidden">
+      <h2 class="card-title" data-i18n="book_title">3. Бронирование</h2>
+
+      <div class="grid2">
+        <label class="field">
+          <span class="label" data-i18n="flight">Рейс</span>
+          <select id="flightSelect" class="input"></select>
+          <small class="hint" id="flightMeta"></small>
+        </label>
+
+        <label class="field">
+          <span class="label" data-i18n="price">Цена (USD)</span>
+          <input id="priceUsd" class="input" type="number" step="0.01" min="1" value="199.00"/>
+          <small class="hint" data-i18n="price_hint">Цена хранится в tickets.price_usd (как ты и хотел).</small>
+        </label>
+      </div>
+
+      <div class="seat-wrap">
+        <div class="seat-head">
+          <div class="seat-title" data-i18n="seat_title">Выбор места</div>
+          <button id="btnReloadSeats" class="btn btn-ghost" type="button" data-i18n="btn_reload_seats">Обновить</button>
+        </div>
+
+        <div id="seatLegend" class="legend">
+          <span class="dot free"></span><span data-i18n="seat_free">свободно</span>
+          <span class="dot taken"></span><span data-i18n="seat_taken">занято</span>
+          <span class="dot pick"></span><span data-i18n="seat_pick">выбрано</span>
+        </div>
+
+        <div id="seats" class="seats"></div>
+
+        <div class="row">
+          <div class="muted">
+            <span data-i18n="picked">Выбрано место:</span> <b id="pickedSeat">—</b>
+          </div>
+
+          <button id="btnGetBookCode" class="btn btn-primary" type="button" data-i18n="btn_get_book_code">
+            Получить код для бронирования
+          </button>
+        </div>
+
+        <div id="bookConfirmRow" class="row hidden">
+          <label class="field">
+            <span class="label" data-i18n="book_code">Код из Telegram (бронирование)</span>
+            <input id="bookCode" class="input" inputmode="numeric" maxlength="6" placeholder="000000"/>
+          </label>
+
+          <button id="btnConfirmBooking" class="btn btn-primary" type="button" data-i18n="btn_confirm_booking">
+            Подтвердить бронирование
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. My flights -->
+    <section id="myFlightsCard" class="card hidden">
+      <h2 class="card-title" data-i18n="my_title">Мои рейсы</h2>
+
+      <div class="row">
+        <button id="btnMyFlights" class="btn btn-primary" type="button" data-i18n="btn_my_flights">
+          Показать мои рейсы
+        </button>
+        <div class="muted" id="whoami"></div>
+      </div>
+
+      <div id="myFlights" class="list"></div>
     </section>
   </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="script.js"></script>
 </body>
 </html>
