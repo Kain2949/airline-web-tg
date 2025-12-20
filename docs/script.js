@@ -1,7 +1,18 @@
 // ===== CONFIG =====
-// Да, API торчит через ngrok. Иначе GitHub Pages с SQLite не дружит по магии.
-// Но: НИКАКИХ модалок “введи URL”, просто работает.
-const API_BASE = "https://kristan-labored-earsplittingly.ngrok-free.dev";
+// По умолчанию — твой ngrok. Можно тихо переопределить через ?api=https://.... (без модалок и истерик).
+let API_BASE = "https://kristan-labored-earsplittingly.ngrok-free.dev";
+
+(function pickApiFromQuery() {
+  const p = new URLSearchParams(location.search);
+  const v = (p.get("api") || "").trim();
+  if (v.startsWith("http")) {
+    API_BASE = v.replace(/\/+$/, "");
+    localStorage.setItem("air_api_base", API_BASE);
+  } else {
+    const saved = (localStorage.getItem("air_api_base") || "").trim();
+    if (saved.startsWith("http")) API_BASE = saved.replace(/\/+$/, "");
+  }
+})();
 
 const $ = (id) => document.getElementById(id);
 
@@ -17,6 +28,7 @@ function toast(msg, ok = false) {
 async function api(path, method = "GET", body = null) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
+
   const url = API_BASE + path;
 
   let res;
@@ -24,6 +36,14 @@ async function api(path, method = "GET", body = null) {
     res = await fetch(url, opts);
   } catch (e) {
     throw new Error("Failed to fetch");
+  }
+
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+  if (!ct.includes("application/json")) {
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) throw new Error(txt || ("HTTP " + res.status));
+    throw new Error("Сервер вернул не JSON (Content-Type: " + ct + ")");
   }
 
   let data = null;
@@ -37,6 +57,11 @@ async function api(path, method = "GET", body = null) {
     const msg = (data && (data.detail || data.message)) ? (data.detail || data.message) : ("HTTP " + res.status);
     throw new Error(msg);
   }
+
+  if (data === null) {
+    throw new Error("Сервер вернул пустой/битый JSON");
+  }
+
   return data;
 }
 
@@ -47,31 +72,23 @@ function normU(u) {
   return u;
 }
 
-function setToken(token) {
-  localStorage.setItem("air_token", token);
-}
-function getToken() {
-  return localStorage.getItem("air_token") || "";
-}
-function clearToken() {
-  localStorage.removeItem("air_token");
-}
+function setToken(token) { localStorage.setItem("air_token", token); }
+function getToken() { return localStorage.getItem("air_token") || ""; }
+function clearToken() { localStorage.removeItem("air_token"); }
 
 function showAuth() {
   $("auth").classList.remove("hidden");
   $("app").classList.add("hidden");
+  $("btnLogout").classList.add("hidden");
 }
 function showApp() {
   $("auth").classList.add("hidden");
   $("app").classList.remove("hidden");
+  $("btnLogout").classList.remove("hidden");
 }
 
-function showModal(on) {
-  $("modal").classList.toggle("hidden", !on);
-}
-function showModal2(on) {
-  $("modal2").classList.toggle("hidden", !on);
-}
+function showModal(on) { $("modal").classList.toggle("hidden", !on); }
+function showModal2(on) { $("modal2").classList.toggle("hidden", !on); }
 
 // ===== Tabs =====
 document.querySelectorAll(".tab").forEach(btn => {
@@ -87,7 +104,6 @@ document.querySelectorAll(".tab").forEach(btn => {
 // ===== AUTH: Register =====
 $("btnRegCode").addEventListener("click", async () => {
   const username = normU($("regUsername").value);
-
   if (!username) return toast("Введи Telegram @username");
 
   try {
@@ -101,6 +117,7 @@ $("btnRegCode").addEventListener("click", async () => {
 $("btnRegConfirm").addEventListener("click", async () => {
   const username = normU($("regUsername").value);
   const code = ($("regCode").value || "").trim();
+
   const last_name = ($("regLast").value || "").trim();
   const first_name = ($("regFirst").value || "").trim();
   const middle_name = ($("regMiddle").value || "").trim();
@@ -110,14 +127,16 @@ $("btnRegConfirm").addEventListener("click", async () => {
 
   if (!username) return toast("Нет @username");
   if (!/^\d{6}$/.test(code)) return toast("Код — 6 цифр");
-  if (!last_name || !first_name || !passport_no || !phone || !email) return toast("Заполни все обязательные поля");
+  if (!last_name || !first_name || !passport_no || !phone || !email) return toast("Заполни обязательные поля");
 
   try {
     const data = await api("/api/auth/confirm-register", "POST", {
-      username, code, last_name, first_name,
+      username, code,
+      last_name, first_name,
       middle_name: middle_name || null,
       passport_no, phone, email
     });
+
     setToken(data.token);
     toast("Регистрация подтверждена ✅", true);
     showApp();
@@ -187,7 +206,7 @@ async function searchFlights() {
       limit: 120
     });
 
-    const flights = (data && data.flights) ? data.flights : [];
+    const flights = (data && Array.isArray(data.flights)) ? data.flights : [];
     if (!flights.length) {
       list.innerHTML = `<div class="muted">Ничего не найдено. Попробуй другие фильтры.</div>`;
       return;
@@ -196,7 +215,7 @@ async function searchFlights() {
     list.innerHTML = "";
     flights.forEach(f => list.appendChild(flightCard(f)));
   } catch (e) {
-    list.innerHTML = `<div class="muted">Ошибка: ${e.message}</div>`;
+    list.innerHTML = `<div class="muted">Ошибка: ${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -206,7 +225,7 @@ function flightCard(f) {
 
   el.innerHTML = `
     <div class="flightTop">
-      <div class="fn">${escapeHtml(f.flight_number)}</div>
+      <div class="fn">Рейс ${escapeHtml(f.flight_number)}</div>
       <div class="price">$${Number(f.suggested_price).toFixed(2)}</div>
     </div>
 
@@ -218,7 +237,7 @@ function flightCard(f) {
       <div class="arrow">→</div>
       <div>
         <div class="city">${escapeHtml(f.arr)}</div>
-        <div class="dt">${escapeHtml(f.plane_model)} · ${f.seat_capacity} мест</div>
+        <div class="dt">${escapeHtml(f.plane_model)} · ${Number(f.seat_capacity)} мест</div>
       </div>
     </div>
 
@@ -312,10 +331,10 @@ async function openSeatModal(f) {
 
   try {
     const data = await api(`/api/flights/${f.flight_id}/seats`, "GET");
-    const seats = data.seats || [];
+    const seats = (data && Array.isArray(data.seats)) ? data.seats : [];
     renderSeats(seats);
   } catch (e) {
-    grid.innerHTML = `<div class="muted">Ошибка: ${e.message}</div>`;
+    grid.innerHTML = `<div class="muted">Ошибка: ${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -323,19 +342,26 @@ function renderSeats(seats) {
   const grid = $("seatGrid");
   grid.innerHTML = "";
 
-  seats.forEach(x => {
-    const b = document.createElement("button");
-    b.className = "seat " + (x.status === "booked" ? "booked" : "free");
-    b.textContent = x.seat;
+  if (!seats.length) {
+    grid.innerHTML = `<div class="muted">Нет мест (что-то очень странное).</div>`;
+    return;
+  }
 
-    if (x.status === "booked") {
+  seats.forEach(x => {
+    const seat = String(x.seat || "");
+    const status = String(x.status || "free");
+
+    const b = document.createElement("button");
+    b.className = "seat " + (status === "booked" ? "booked" : "free");
+    b.textContent = seat;
+
+    if (status === "booked") {
       b.disabled = true;
     } else {
       b.addEventListener("click", () => {
-        // снять предыдущий pick
         grid.querySelectorAll(".seat.pick").forEach(s => s.classList.remove("pick"));
         b.classList.add("pick");
-        selectedSeat = x.seat;
+        selectedSeat = seat;
         $("mSeat").textContent = selectedSeat;
       });
     }
@@ -354,7 +380,8 @@ $("btnMyFlights").addEventListener("click", async () => {
 
   try {
     const data = await api(`/api/me/flights?token=${encodeURIComponent(token)}`, "GET");
-    const flights = data.flights || [];
+    const flights = (data && Array.isArray(data.flights)) ? data.flights : [];
+
     if (!flights.length) {
       $("myFlightsList").innerHTML = `<div class="muted">Пока пусто. Забронируй что-нибудь.</div>`;
       return;
@@ -366,7 +393,7 @@ $("btnMyFlights").addEventListener("click", async () => {
       el.className = "flight";
       el.innerHTML = `
         <div class="flightTop">
-          <div class="fn">${escapeHtml(t.flight_number)}</div>
+          <div class="fn">Рейс ${escapeHtml(t.flight_number)}</div>
           <div class="price">$${Number(t.price_usd).toFixed(2)}</div>
         </div>
         <div class="route">
@@ -377,23 +404,22 @@ $("btnMyFlights").addEventListener("click", async () => {
           <div class="arrow">→</div>
           <div>
             <div class="city">${escapeHtml(t.arr)}</div>
-            <div class="dt">${escapeHtml(t.plane_model)} · место ${escapeHtml(t.seat_no)}</div>
+            <div class="dt">${escapeHtml(t.plane_model)} · место <b>${escapeHtml(t.seat_no)}</b></div>
           </div>
         </div>
       `;
       $("myFlightsList").appendChild(el);
     });
   } catch (e) {
-    $("myFlightsList").innerHTML = `<div class="muted">Ошибка: ${e.message}</div>`;
+    $("myFlightsList").innerHTML = `<div class="muted">Ошибка: ${escapeHtml(e.message)}</div>`;
   }
 });
 
 $("m2Close").addEventListener("click", () => showModal2(false));
 $("modal2").addEventListener("click", (e) => { if (e.target.id === "modal2") showModal2(false); });
 
-// ===== Auto =====
+// ===== Boot =====
 (async function boot() {
-  // если уже есть сессия — сразу в приложение
   if (getToken()) {
     showApp();
     await searchFlights();

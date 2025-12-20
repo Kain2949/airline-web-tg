@@ -2,193 +2,183 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Авиакомпания — регистрация и бронирование</title>
-  <link rel="stylesheet" href="./style2.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Авиакомпания: регистрация и бронирование</title>
+  <link rel="stylesheet" href="style2.css" />
 </head>
 <body>
   <div class="bg"></div>
 
-  <main class="wrap">
-    <header class="top">
-      <button id="btnLang" class="chip">EN</button>
-      <h1>Авиакомпания:<br>регистрация и бронирование</h1>
-      <div class="sub">бот: <span class="mono">@perelet_bd_bot</span></div>
-    </header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="pill">Airline</div>
+      <div class="spacer"></div>
+      <button id="btnLogout" class="btn ghost hidden">Выйти</button>
+    </div>
 
     <!-- AUTH -->
     <section id="auth" class="card">
+      <h1>Авиакомпания</h1>
+      <p class="muted">Выбирай: регистрация или вход. Код приходит в Telegram.</p>
+
       <div class="tabs">
         <button class="tab active" data-tab="register">Регистрация</button>
-        <button class="tab" data-tab="login">Войти</button>
+        <button class="tab" data-tab="login">Вход</button>
       </div>
 
-      <div id="tab-register" class="tabpane">
-        <h2>Регистрация пассажира</h2>
-
+      <div id="tab-register" class="pane">
         <div class="grid2">
-          <div class="field">
+          <div>
             <label>Telegram @username</label>
             <input id="regUsername" placeholder="@username" />
-            <div class="hint">Это будет твоим <b>passenger_id</b> в базе.</div>
+            <div class="hint">Сначала открой бота и нажми <b>/start</b>.</div>
           </div>
-          <div></div>
+          <div class="actionsCol">
+            <button id="btnRegCode" class="btn primary">Получить код</button>
+            <input id="regCode" placeholder="000000" inputmode="numeric" maxlength="6" />
+          </div>
+        </div>
 
-          <div class="field">
-            <label>Фамилия</label>
-            <input id="regLast" placeholder="Ivanov / Иванов" />
+        <div class="grid3">
+          <div>
+            <label>Фамилия *</label>
+            <input id="regLast" placeholder="Иванов" />
           </div>
-          <div class="field">
-            <label>Имя</label>
-            <input id="regFirst" placeholder="Petr / Пётр" />
+          <div>
+            <label>Имя *</label>
+            <input id="regFirst" placeholder="Иван" />
           </div>
-
-          <div class="field">
+          <div>
             <label>Отчество</label>
-            <input id="regMiddle" placeholder="Nikolaevich / Николаевич" />
+            <input id="regMiddle" placeholder="Иванович" />
           </div>
-          <div class="field">
-            <label>Паспорт</label>
-            <input id="regPassport" placeholder="AA0000000" />
-          </div>
+        </div>
 
-          <div class="field">
-            <label>Телефон</label>
-            <input id="regPhone" placeholder="+375XXXXXXXXX" />
+        <div class="grid3">
+          <div>
+            <label>Паспорт *</label>
+            <input id="regPassport" placeholder="MP1234567" />
           </div>
-          <div class="field">
-            <label>E-mail</label>
+          <div>
+            <label>Телефон *</label>
+            <input id="regPhone" placeholder="+375..." />
+          </div>
+          <div>
+            <label>E-mail *</label>
             <input id="regEmail" placeholder="example@mail.com" />
           </div>
         </div>
 
-        <div class="row">
-          <button id="btnRegCode" class="btn">Получить код</button>
-          <input id="regCode" class="code" placeholder="000000" maxlength="6" />
-          <button id="btnRegConfirm" class="btn primary">Подтвердить регистрацию</button>
-        </div>
-
-        <div class="hint2">
-          Сначала открой бота и нажми <b>/start</b>, иначе он не сможет писать тебе коды.
-        </div>
+        <button id="btnRegConfirm" class="btn wide">Подтвердить регистрацию</button>
       </div>
 
-      <div id="tab-login" class="tabpane hidden">
-        <h2>Вход</h2>
-
-        <div class="field">
-          <label>Telegram @username</label>
-          <input id="loginUsername" placeholder="@username" />
+      <div id="tab-login" class="pane hidden">
+        <div class="grid2">
+          <div>
+            <label>Telegram @username</label>
+            <input id="loginUsername" placeholder="@username" />
+            <div class="hint">Если ты уже зарегистрирован — просто вход.</div>
+          </div>
+          <div class="actionsCol">
+            <button id="btnLoginCode" class="btn primary">Получить код</button>
+            <input id="loginCode" placeholder="000000" inputmode="numeric" maxlength="6" />
+          </div>
         </div>
 
-        <div class="row">
-          <button id="btnLoginCode" class="btn">Получить код</button>
-          <input id="loginCode" class="code" placeholder="000000" maxlength="6" />
-          <button id="btnLoginConfirm" class="btn primary">Войти</button>
-        </div>
-
-        <div class="hint2">Если пользователя нет в базе — иди на “Регистрация”.</div>
+        <button id="btnLoginConfirm" class="btn wide">Войти</button>
       </div>
     </section>
 
     <!-- APP -->
     <section id="app" class="card hidden">
-      <div class="appHead">
-        <div>
-          <h2>Бронирование</h2>
-          <div class="sub2">Выбирай рейс → место → код в Telegram → подтверждение</div>
-        </div>
-        <div class="right">
-          <button id="btnMyFlights" class="btn">Мои рейсы</button>
-          <button id="btnLogout" class="btn danger">Выйти</button>
-        </div>
+      <div class="row">
+        <h2>Поиск рейсов</h2>
+        <div class="spacer"></div>
+        <button id="btnMyFlights" class="btn ghost">Мои рейсы</button>
       </div>
 
       <div class="filters">
-        <div class="field">
+        <div>
           <label>Откуда</label>
-          <input id="fDep" placeholder="Minsk / Warsaw / ..." />
+          <input id="fDep" placeholder="Minsk / BY / ..." />
         </div>
-        <div class="field">
+        <div>
           <label>Куда</label>
-          <input id="fArr" placeholder="Berlin / Rome / ..." />
+          <input id="fArr" placeholder="Berlin / DE / ..." />
         </div>
-        <div class="field">
-          <label>Дата вылета (от)</label>
+        <div>
+          <label>Дата туда</label>
           <input id="fDateFrom" type="date" />
         </div>
-        <div class="field">
-          <label>Дата вылета (до)</label>
+        <div>
+          <label>Дата назад (или пусто)</label>
           <input id="fDateTo" type="date" />
         </div>
-        <div class="field">
-          <label>Обратно</label>
-          <select id="fReturn">
-            <option value="dash">—</option>
-            <option value="date">С датой назад (пока визуально)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <button id="btnSearch" class="btn primary w100">Найти рейсы</button>
+        <div class="filtersBtn">
+          <button id="btnSearch" class="btn primary wide">Найти</button>
         </div>
       </div>
 
       <div id="flightsList" class="list"></div>
     </section>
+  </div>
 
-    <!-- MODAL: SEATS -->
-    <div id="modal" class="modal hidden">
-      <div class="modalBox">
-        <div class="modalTop">
-          <div>
-            <div id="mTitle" class="mTitle">Рейс</div>
-            <div id="mSub" class="mSub"></div>
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- SEAT MODAL -->
+  <div id="modal" class="modal hidden">
+    <div class="modalCard">
+      <div class="modalHead">
+        <div>
+          <div id="mTitle" class="mTitle">Рейс</div>
+          <div id="mSub" class="muted"></div>
+        </div>
+        <button id="mClose" class="btn x">✕</button>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Цена (USD)</label>
+          <input id="mPrice" type="number" step="0.01" />
+          <div class="hint">Цена пишется в <b>tickets.price_usd</b>.</div>
+        </div>
+        <div class="seatPickInfo">
+          <div class="legend">
+            <span class="dot free"></span> свободно
+            <span class="dot booked"></span> занято
+            <span class="dot pick"></span> выбрано
           </div>
-          <button id="mClose" class="xbtn">×</button>
+          <div class="picked">Выбрано место: <b id="mSeat">—</b></div>
         </div>
+      </div>
 
-        <div class="row">
-          <div class="field w100">
-            <label>Цена (USD)</label>
-            <input id="mPrice" type="number" min="1" step="0.01" />
-          </div>
-        </div>
-
-        <div class="legend">
-          <span><i class="dot free"></i> свободно</span>
-          <span><i class="dot booked"></i> забронировано</span>
-          <span><i class="dot pick"></i> выбрано</span>
-        </div>
-
+      <div class="seatWrap">
         <div id="seatGrid" class="seatGrid"></div>
+      </div>
 
-        <div class="row">
-          <div class="hint2">Выбрано место: <b id="mSeat">—</b></div>
-        </div>
+      <div class="bookRow">
+        <button id="btnBookCode" class="btn ghost wide">Получить код для бронирования</button>
+      </div>
 
-        <div class="row">
-          <button id="btnBookCode" class="btn">Получить код для бронирования</button>
-          <input id="bookCode" class="code" placeholder="000000" maxlength="6" />
-          <button id="btnBookConfirm" class="btn primary">Подтвердить бронь</button>
-        </div>
+      <div class="bookRow">
+        <input id="bookCode" placeholder="000000" inputmode="numeric" maxlength="6" />
+        <button id="btnBookConfirm" class="btn primary">Подтвердить бронь</button>
       </div>
     </div>
+  </div>
 
-    <!-- MODAL: MY FLIGHTS -->
-    <div id="modal2" class="modal hidden">
-      <div class="modalBox">
-        <div class="modalTop">
-          <div class="mTitle">Мои рейсы</div>
-          <button id="m2Close" class="xbtn">×</button>
-        </div>
-        <div id="myFlightsList" class="list"></div>
+  <!-- MY FLIGHTS MODAL -->
+  <div id="modal2" class="modal hidden">
+    <div class="modalCard">
+      <div class="modalHead">
+        <div class="mTitle">Мои рейсы</div>
+        <button id="m2Close" class="btn x">✕</button>
       </div>
+      <div id="myFlightsList" class="list"></div>
     </div>
+  </div>
 
-    <div id="toast" class="toast hidden"></div>
-  </main>
-
-  <script src="./script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
