@@ -1,382 +1,468 @@
-// ---------------------------
-// CONFIG
-// ---------------------------
-// НЕ ручной ввод в UI. Если хочешь поменять адрес — меняешь тут один раз.
-const API_BASE = "https://kristan-labored-earsplittingly.ngrok-free.dev";
+// script.js
+// Бэкенд зашит (ngrok домен). Никаких модалок "введи URL".
 
-// ---------------------------
-// helpers
-// ---------------------------
+const DEFAULT_API = "https://kristan-labored-earsplittingly.ngrok-free.dev";
+
 const $ = (id) => document.getElementById(id);
 
-function show(el, yes) { el.style.display = yes ? "" : "none"; }
-function err(el, msg) { el.textContent = msg; show(el, !!msg); }
+const toastEl = $("toast");
+let toastTimer = null;
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 2600);
+}
 
 function normUser(u) {
   u = (u || "").trim();
   if (!u) return "";
-  if (!u.startsWith("@")) u = "@" + u;
-  return u.toLowerCase();
+  return u.startsWith("@") ? u : "@" + u;
 }
 
-async function api(path, method="GET", body=null) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
-  if (body) opts.body = JSON.stringify(body);
+async function apiFetch(path, opts = {}) {
+  const url = DEFAULT_API + path;
 
-  const res = await fetch(API_BASE + path, opts);
-  let data = null;
-  try { data = await res.json(); } catch { data = null; }
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
+  });
+
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const data = isJson ? await res.json() : null;
 
   if (!res.ok) {
-    const detail = (data && (data.detail || data.message)) ? (data.detail || data.message) : `HTTP ${res.status}`;
+    const detail = data?.detail || `HTTP ${res.status}`;
     throw new Error(detail);
   }
   return data;
 }
 
-// ---------------------------
-// state
-// ---------------------------
-let currentUser = localStorage.getItem("air_user") || "";
-let authMode = ""; // "login"|"register"
-let selectedFlight = null; // {flight_id,...}
-let selectedSeat = "";
-let selectedPrice = 0;
-
-// ---------------------------
-// UI switching
-// ---------------------------
-function setScreen(name) {
-  show($("authSection"), name === "auth");
-  show($("searchSection"), name === "search");
-  show($("seatsSection"), name === "seats");
-  show($("myFlightsSection"), name === "myflights");
-
-  const authed = !!currentUser;
-  $("myFlightsBtn").disabled = !authed;
-  $("logoutBtn").disabled = !authed;
+function tryAutoFillTelegramUsername() {
+  try {
+    const tg = window.Telegram?.WebApp;
+    const u = tg?.initDataUnsafe?.user?.username;
+    if (u) {
+      $("reg-username").value = "@" + u;
+      $("login-username").value = "@" + u;
+    }
+  } catch (_) {}
 }
 
-// ---------------------------
-// Auth
-// ---------------------------
-async function startCode(purpose) {
-  const username = normUser($("username").value);
-  if (!username) return err($("authErr"), "Впиши @username.");
+function saveAuth(username) {
+  localStorage.setItem("airline_username", username);
+}
+function loadAuth() {
+  return localStorage.getItem("airline_username") || "";
+}
+function clearAuth() {
+  localStorage.removeItem("airline_username");
+}
 
-  err($("authErr"), "");
+function showAuth() {
+  $("view-auth").classList.remove("hidden");
+  $("view-booking").classList.add("hidden");
+}
+function showBooking(username) {
+  $("view-auth").classList.add("hidden");
+  $("view-booking").classList.remove("hidden");
+  $("whoami").textContent = username;
+}
 
-  await api("/api/auth/start", "POST", { username, purpose, payload: {} });
+function switchTab(tab) {
+  const regTab = $("tab-register");
+  const loginTab = $("tab-login");
+  const regPane = $("pane-register");
+  const loginPane = $("pane-login");
 
-  if (purpose === "register") {
-    authMode = "register";
-    show($("regForm"), true);
-    err($("authErr"), "Код отправлен в Telegram. Введи его ниже и заполни данные пассажира.");
+  if (tab === "register") {
+    regTab.classList.add("active");
+    loginTab.classList.remove("active");
+    regPane.classList.remove("hidden");
+    loginPane.classList.add("hidden");
   } else {
-    authMode = "login";
-    show($("regForm"), false);
-    err($("authErr"), "Код отправлен в Telegram. Введи его и жми «Войти».");
+    loginTab.classList.add("active");
+    regTab.classList.remove("active");
+    loginPane.classList.remove("hidden");
+    regPane.classList.add("hidden");
   }
 }
 
-async function doLogin() {
-  const username = normUser($("username").value);
-  const code = ($("codeAuth").value || "").trim();
+// ==========================
+// AUTH
+// ==========================
 
-  err($("authErr"), "");
+async function regGetCode() {
+  const username = normUser($("reg-username").value);
+  if (!username) return toast("Введи @username.");
 
-  await api("/api/auth/verify", "POST", { username, purpose: "login", code });
+  await apiFetch("/api/auth/request-code", {
+    method: "POST",
+    body: JSON.stringify({ username, purpose: "register" }),
+  });
 
-  currentUser = username;
-  localStorage.setItem("air_user", currentUser);
-
-  setScreen("search");
+  toast("Код отправлен в Telegram.");
 }
 
-async function finishRegister() {
-  const username = normUser($("username").value);
-  const code = ($("codeReg").value || "").trim();
+async function regConfirm() {
+  const username = normUser($("reg-username").value);
+  const code = ($("reg-code").value || "").trim();
 
-  err($("authErr"), "");
+  const last_name = ($("reg-last").value || "").trim();
+  const first_name = ($("reg-first").value || "").trim();
+  const middle_name = ($("reg-middle").value || "").trim();
+  const passport_no = ($("reg-passport").value || "").trim();
+  const phone = ($("reg-phone").value || "").trim();
+  const email = ($("reg-email").value || "").trim();
 
-  // verify code
-  await api("/api/auth/verify", "POST", { username, purpose: "register", code });
+  if (!username) return toast("Введи @username.");
+  if (!/^\d{6}$/.test(code)) return toast("Код — 6 цифр.");
+  if (!last_name || !first_name || !passport_no || !phone || !email) return toast("Заполни все поля (кроме отчества).");
 
-  // save passenger
-  const p = {
-    username,
-    last_name: ($("lastName").value || "").trim(),
-    first_name: ($("firstName").value || "").trim(),
-    middle_name: ($("middleName").value || "").trim(),
-    passport_no: ($("passport").value || "").trim(),
-    phone: ($("phone").value || "").trim(),
-    email: ($("email").value || "").trim(),
+  await apiFetch("/api/auth/confirm-register", {
+    method: "POST",
+    body: JSON.stringify({ username, code, last_name, first_name, middle_name, passport_no, phone, email }),
+  });
+
+  saveAuth(username);
+  toast("Регистрация успешна.");
+  showBooking(username);
+}
+
+async function loginGetCode() {
+  const username = normUser($("login-username").value);
+  if (!username) return toast("Введи @username.");
+
+  await apiFetch("/api/auth/request-code", {
+    method: "POST",
+    body: JSON.stringify({ username, purpose: "login" }),
+  });
+
+  toast("Код отправлен в Telegram.");
+}
+
+async function loginConfirm() {
+  const username = normUser($("login-username").value);
+  const code = ($("login-code").value || "").trim();
+
+  if (!username) return toast("Введи @username.");
+  if (!/^\d{6}$/.test(code)) return toast("Код — 6 цифр.");
+
+  await apiFetch("/api/auth/confirm-login", {
+    method: "POST",
+    body: JSON.stringify({ username, code }),
+  });
+
+  saveAuth(username);
+  toast("Вход выполнен.");
+  showBooking(username);
+}
+
+// ==========================
+// BOOKING
+// ==========================
+
+let flightsOut = [];
+let flightsBack = [];
+let selectedOut = null;
+let selectedBack = null;
+let seatOut = "";
+let seatBack = "";
+
+function setReturnEnabled(enabled) {
+  $("date-back").disabled = !enabled;
+  $("back-title").classList.toggle("muted", !enabled);
+  $("seats-back-title").classList.toggle("muted", !enabled);
+  if (!enabled) {
+    flightsBack = [];
+    selectedBack = null;
+    seatBack = "";
+    $("list-back").innerHTML = "";
+    $("seats-back").innerHTML = "";
+  }
+}
+
+function flightCard(f, active) {
+  const el = document.createElement("div");
+  el.className = "item" + (active ? " active" : "");
+  el.innerHTML = `
+    <div class="line"><span>${f.flight_number}</span><span>$${f.price_usd}</span></div>
+    <div class="meta">
+      ${f.departure_city} → ${f.arrival_city}<br/>
+      ${f.flight_date} ${f.flight_time} • ${f.seat_capacity} мест
+    </div>
+  `;
+  return el;
+}
+
+async function loadSeats(flightId, targetElId, chosenSeatSetter) {
+  const data = await apiFetch(`/api/flights/${flightId}/seats`);
+  const seats = data.seats || [];
+
+  const box = document.createElement("div");
+  box.className = "seat-grid";
+
+  seats.forEach((s) => {
+    const b = document.createElement("div");
+    b.className = "seat " + (s.status || "free");
+    if (s.status !== "free") b.classList.add("disabled");
+    b.textContent = s.seat_no;
+
+    b.onclick = () => {
+      if (s.status !== "free") return;
+      box.querySelectorAll(".seat").forEach((x) => x.classList.remove("selected"));
+      b.classList.add("selected");
+      chosenSeatSetter(s.seat_no);
+      renderSummary();
+    };
+
+    box.appendChild(b);
+  });
+
+  $(targetElId).innerHTML = "";
+  $(targetElId).appendChild(box);
+}
+
+function renderFlights(listId, flights, selected, onPick) {
+  const box = $(listId);
+  box.innerHTML = "";
+  flights.forEach((f) => {
+    const el = flightCard(f, selected && selected.flight_id === f.flight_id);
+    el.onclick = () => onPick(f);
+    box.appendChild(el);
+  });
+}
+
+function renderSummary() {
+  let txt = "";
+  if (selectedOut) {
+    txt += `Туда: ${selectedOut.flight_number} (${selectedOut.flight_date} ${selectedOut.flight_time})\n`;
+    txt += `Место: ${seatOut || "—"} • Цена: $${selectedOut.price_usd}\n\n`;
+  } else {
+    txt += "Туда: —\n\n";
+  }
+
+  const backEnabled = $("has-return").checked;
+  if (backEnabled) {
+    if (selectedBack) {
+      txt += `Назад: ${selectedBack.flight_number} (${selectedBack.flight_date} ${selectedBack.flight_time})\n`;
+      txt += `Место: ${seatBack || "—"} • Цена: $${selectedBack.price_usd}\n`;
+    } else {
+      txt += "Назад: —\n";
+    }
+  } else {
+    txt += "Назад: —\n";
+  }
+
+  $("summary").textContent = txt.trim();
+}
+
+async function searchFlights() {
+  const from_country = ($("from-country").value || "").trim();
+  const from_city = ($("from-city").value || "").trim();
+  const to_country = ($("to-country").value || "").trim();
+  const to_city = ($("to-city").value || "").trim();
+  const date_out = $("date-out").value;
+
+  if (!from_city || !to_city || !date_out) return toast("Заполни города и дату туда.");
+
+  const out = await apiFetch(
+    `/api/flights/search?from_city=${encodeURIComponent(from_city)}&from_country=${encodeURIComponent(from_country)}&to_city=${encodeURIComponent(to_city)}&to_country=${encodeURIComponent(to_country)}&date=${encodeURIComponent(date_out)}`
+  );
+
+  flightsOut = out.flights || [];
+  selectedOut = null;
+  seatOut = "";
+  $("seats-out").innerHTML = "";
+
+  const pickOut = async (f) => {
+    selectedOut = f;
+    seatOut = "";
+    renderFlights("list-out", flightsOut, selectedOut, pickOut);
+    await loadSeats(f.flight_id, "seats-out", (s) => (seatOut = s));
+    renderSummary();
   };
 
-  if (!p.last_name || !p.first_name || !p.passport_no || !p.phone || !p.email) {
-    return err($("authErr"), "Заполни данные пассажира полностью (кроме отчества).");
-  }
+  renderFlights("list-out", flightsOut, selectedOut, pickOut);
 
-  await api("/api/passengers/register", "POST", p);
-
-  currentUser = username;
-  localStorage.setItem("air_user", currentUser);
-
-  setScreen("search");
-}
-
-// ---------------------------
-// Search flights
-// ---------------------------
-function renderFlights(list, container, kind) {
-  container.innerHTML = "";
-  if (!list.length) {
-    container.innerHTML = `<div class="muted">Ничего не найдено.</div>`;
-    return;
-  }
-
-  for (const f of list) {
-    const div = document.createElement("div");
-    div.className = "item";
-    div.innerHTML = `
-      <div class="itemTop">
-        <div class="big">${f.flight_number}</div>
-        <div class="price">${f.price_usd} USD</div>
-      </div>
-      <div class="muted">${f.from} → ${f.to}</div>
-      <div class="muted">${f.date} ${f.time} • ${f.seat_capacity} мест</div>
-      <div class="row">
-        <button class="btn small">Выбрать</button>
-      </div>
-    `;
-    div.querySelector("button").onclick = () => chooseFlight(f);
-    container.appendChild(div);
-  }
-}
-
-async function doSearch() {
-  err($("searchErr"), "");
-  const from_city = ($("fromCity").value || "").trim();
-  const to_city = ($("toCity").value || "").trim();
-  const date_out = ($("dateOut").value || "").trim();
-  let date_back = ($("dateBack").value || "").trim();
-
-  if (date_back === "-") date_back = "";
-
-  try {
-    const data = await api("/api/flights/search", "POST", { from_city, to_city, date_out, date_back });
-
-    show($("resultsBox"), true);
-    renderFlights(data.outbound || [], $("outboundList"), "out");
-
-    if ((data.return || []).length) {
-      show($("returnBlock"), true);
-      renderFlights(data.return || [], $("returnList"), "back");
+  const backEnabled = $("has-return").checked;
+  if (backEnabled) {
+    const date_back = $("date-back").value;
+    if (!date_back) {
+      toast("Выбрал дату назад — так выбери её.");
     } else {
-      show($("returnBlock"), false);
-      $("returnList").innerHTML = "";
-    }
+      const back = await apiFetch(
+        `/api/flights/search?from_city=${encodeURIComponent(to_city)}&from_country=${encodeURIComponent(to_country)}&to_city=${encodeURIComponent(from_city)}&to_country=${encodeURIComponent(from_country)}&date=${encodeURIComponent(date_back)}`
+      );
 
-  } catch (e) {
-    err($("searchErr"), e.message);
-  }
-}
+      flightsBack = back.flights || [];
+      selectedBack = null;
+      seatBack = "";
+      $("seats-back").innerHTML = "";
 
-// ---------------------------
-// Seats
-// ---------------------------
-function seatStateClass(st) {
-  if (st === "reserved") return "seat reserved";
-  if (st === "purchased") return "seat purchased";
-  return "seat free";
-}
-
-function renderSeatMap(mapObj, cap) {
-  const seatMap = $("seatMap");
-  seatMap.innerHTML = "";
-
-  // numbers 10/20/30
-  const nums = cap / 6;
-  const letters = ["A","B","C","D","E","F"];
-
-  // grid: rows = letters, cols = numbers
-  const grid = document.createElement("div");
-  grid.className = "seatgrid";
-  grid.style.gridTemplateColumns = `repeat(${nums}, 1fr)`;
-
-  // We place seat blocks by columns: A1..F1 stacked? user said behind A1 is B1 etc.
-  // Visual: each column = number, inside it 6 seats A..F vertically.
-  for (let n = 1; n <= nums; n++) {
-    const col = document.createElement("div");
-    col.className = "seatcol";
-    const head = document.createElement("div");
-    head.className = "colhead";
-    head.textContent = n;
-    col.appendChild(head);
-
-    for (const L of letters) {
-      const seat = `${L}${n}`;
-      const st = mapObj[seat] || "free";
-
-      const b = document.createElement("button");
-      b.className = seatStateClass(st);
-      b.textContent = L;
-
-      if (st !== "free") {
-        b.disabled = true;
-      }
-
-      b.onclick = () => {
-        selectedSeat = seat;
-        $("chosenSeat").textContent = seat;
-        $("sendBookingCode").disabled = false;
-        $("confirmBooking").disabled = false;
-
-        // highlight chosen
-        document.querySelectorAll(".seat").forEach(x => x.classList.remove("chosen"));
-        b.classList.add("chosen");
+      const pickBack = async (f) => {
+        selectedBack = f;
+        seatBack = "";
+        renderFlights("list-back", flightsBack, selectedBack, pickBack);
+        await loadSeats(f.flight_id, "seats-back", (s) => (seatBack = s));
+        renderSummary();
       };
 
-      col.appendChild(b);
+      renderFlights("list-back", flightsBack, selectedBack, pickBack);
     }
-
-    grid.appendChild(col);
+  } else {
+    flightsBack = [];
+    selectedBack = null;
+    seatBack = "";
+    $("list-back").innerHTML = "";
+    $("seats-back").innerHTML = "";
   }
 
-  seatMap.appendChild(grid);
+  $("results").classList.remove("hidden");
+  $("my").classList.add("hidden");
+  renderSummary();
 }
 
-async function chooseFlight(f) {
-  selectedFlight = f;
-  selectedSeat = "";
-  selectedPrice = f.price_usd;
+function buildBookingSelections() {
+  const sels = [];
+  if (!selectedOut || !seatOut) return null;
 
-  $("chosenFlightHint").textContent = `${f.flight_number}: ${f.from} → ${f.to}, ${f.date} ${f.time}, самолёт на ${f.seat_capacity} мест`;
-  $("chosenSeat").textContent = "—";
-  $("chosenPrice").textContent = String(selectedPrice);
+  sels.push({ flight_id: selectedOut.flight_id, seat_no: seatOut, price_usd: selectedOut.price_usd });
 
-  $("sendBookingCode").disabled = true;
-  $("confirmBooking").disabled = true;
-  $("codeBook").value = "";
-
-  setScreen("seats");
-  await refreshSeats();
-}
-
-async function refreshSeats() {
-  err($("seatErr"), "");
-  if (!selectedFlight) return;
-
-  try {
-    const data = await api(`/api/flights/${selectedFlight.flight_id}/seats`, "GET");
-    renderSeatMap(data.map || {}, data.seat_capacity);
-  } catch (e) {
-    err($("seatErr"), e.message);
+  const backEnabled = $("has-return").checked;
+  if (backEnabled) {
+    if (!selectedBack || !seatBack) return null;
+    sels.push({ flight_id: selectedBack.flight_id, seat_no: seatBack, price_usd: selectedBack.price_usd });
   }
+  return sels;
 }
 
-// ---------------------------
-// Booking
-// ---------------------------
-async function sendBookingCode() {
-  err($("seatErr"), "");
-  if (!currentUser) return err($("seatErr"), "Ты не вошёл.");
-  if (!selectedFlight) return err($("seatErr"), "Рейс не выбран.");
-  if (!selectedSeat) return err($("seatErr"), "Выбери место.");
+async function bookingGetCode() {
+  const username = loadAuth();
+  if (!username) return toast("Сначала войди.");
 
-  try {
-    await api("/api/booking/start", "POST", {
-      username: currentUser,
-      flight_id: selectedFlight.flight_id,
-      seat_no: selectedSeat,
-      price_usd: selectedPrice
-    });
-    err($("seatErr"), "Код бронирования отправлен в Telegram. Введи его и подтверди.");
-  } catch (e) {
-    err($("seatErr"), e.message);
-  }
+  const selections = buildBookingSelections();
+  if (!selections) return toast("Выбери рейс(ы) и место(а).");
+
+  await apiFetch("/api/booking/request-code", {
+    method: "POST",
+    body: JSON.stringify({ username, selections }),
+  });
+
+  toast("Код бронирования отправлен в Telegram.");
 }
 
-async function confirmBooking() {
-  err($("seatErr"), "");
-  const code = ($("codeBook").value || "").trim();
-  try {
-    await api("/api/booking/confirm", "POST", {
-      username: currentUser,
-      purpose: "booking",
-      code
-    });
-    err($("seatErr"), "✅ Забронировано. Место теперь занято навсегда (поздравляю).");
-    await refreshSeats();
-  } catch (e) {
-    err($("seatErr"), e.message);
-  }
+async function bookingConfirm() {
+  const username = loadAuth();
+  const code = ($("book-code").value || "").trim();
+  if (!username) return toast("Сначала войди.");
+  if (!/^\d{6}$/.test(code)) return toast("Код — 6 цифр.");
+
+  await apiFetch("/api/booking/confirm", {
+    method: "POST",
+    body: JSON.stringify({ username, code }),
+  });
+
+  toast("Бронирование подтверждено ✅");
+
+  if (selectedOut) await loadSeats(selectedOut.flight_id, "seats-out", (s) => (seatOut = s));
+  if (selectedBack) await loadSeats(selectedBack.flight_id, "seats-back", (s) => (seatBack = s));
+
+  seatOut = "";
+  seatBack = "";
+  renderSummary();
 }
 
-// ---------------------------
-// My flights
-// ---------------------------
-async function showMyFlights() {
-  err($("myFlightsErr"), "");
-  $("myFlightsList").innerHTML = "";
-  setScreen("myflights");
+async function loadMyFlights() {
+  const username = loadAuth();
+  if (!username) return toast("Сначала войди.");
 
-  try {
-    const list = await api(`/api/my-flights?username=${encodeURIComponent(currentUser)}`, "GET");
-    if (!list.length) {
-      $("myFlightsList").innerHTML = `<div class="muted">Пока пусто. Как твоя душа.</div>`;
-      return;
-    }
-    for (const t of list) {
-      const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML = `
-        <div class="itemTop">
-          <div class="big">${t.flight_number}</div>
-          <div class="price">${t.price_usd} USD</div>
+  const data = await apiFetch(`/api/my-flights?username=${encodeURIComponent(username)}`);
+  const list = data.tickets || [];
+
+  const box = $("my-list");
+  box.innerHTML = "";
+
+  if (list.length === 0) {
+    box.innerHTML = `<div class="item"><div class="meta">Пусто. У тебя нет бронирований.</div></div>`;
+  } else {
+    list.forEach((t) => {
+      const el = document.createElement("div");
+      el.className = "item";
+      el.innerHTML = `
+        <div class="line"><span>${t.flight_number}</span><span>$${t.price_usd}</span></div>
+        <div class="meta">
+          ${t.from} → ${t.to}<br/>
+          ${t.date} ${t.time} • место ${t.seat_no} • статус: ${t.status}
         </div>
-        <div class="muted">${t.from} → ${t.to}</div>
-        <div class="muted">${t.date} ${t.time}</div>
-        <div class="muted">Место: <b>${t.seat_no}</b> • Статус: <b>${t.status}</b></div>
       `;
-      $("myFlightsList").appendChild(div);
-    }
-  } catch (e) {
-    err($("myFlightsErr"), e.message);
+      box.appendChild(el);
+    });
   }
+
+  $("my").classList.remove("hidden");
+  toast("Показала твои брони.");
 }
 
-// ---------------------------
-// boot
-// ---------------------------
-window.addEventListener("load", () => {
-  // wire buttons
-  $("sendLoginCode").onclick = () => startCode("login");
-  $("sendRegisterCode").onclick = () => startCode("register");
-  $("verifyLogin").onclick = doLogin;
-  $("finishRegister").onclick = finishRegister;
+// ==========================
+// INIT
+// ==========================
 
-  $("searchBtn").onclick = doSearch;
+function bind() {
+  $("tab-register").onclick = () => switchTab("register");
+  $("tab-login").onclick = () => switchTab("login");
 
-  $("backToSearch").onclick = () => setScreen("search");
-  $("refreshSeats").onclick = refreshSeats;
-  $("sendBookingCode").onclick = sendBookingCode;
-  $("confirmBooking").onclick = confirmBooking;
-
-  $("myFlightsBtn").onclick = showMyFlights;
-  $("backFromMyFlights").onclick = () => setScreen("search");
-
-  $("logoutBtn").onclick = () => {
-    currentUser = "";
-    localStorage.removeItem("air_user");
-    setScreen("auth");
+  $("reg-get-code").onclick = async () => {
+    try { await regGetCode(); } catch (e) { toast(String(e.message || e)); }
+  };
+  $("reg-confirm").onclick = async () => {
+    try { await regConfirm(); } catch (e) { toast(String(e.message || e)); }
   };
 
-  // init screen
-  if (currentUser) {
-    $("username").value = currentUser;
-    setScreen("search");
-  } else {
-    setScreen("auth");
-  }
-});
+  $("login-get-code").onclick = async () => {
+    try { await loginGetCode(); } catch (e) { toast(String(e.message || e)); }
+  };
+  $("login-confirm").onclick = async () => {
+    try { await loginConfirm(); } catch (e) { toast(String(e.message || e)); }
+  };
+
+  $("has-return").onchange = () => setReturnEnabled($("has-return").checked);
+
+  $("btn-search").onclick = async () => {
+    try { await searchFlights(); } catch (e) { toast(String(e.message || e)); }
+  };
+
+  $("book-get-code").onclick = async () => {
+    try { await bookingGetCode(); } catch (e) { toast(String(e.message || e)); }
+  };
+
+  $("book-confirm").onclick = async () => {
+    try { await bookingConfirm(); } catch (e) { toast(String(e.message || e)); }
+  };
+
+  $("btn-my").onclick = async () => {
+    try { await loadMyFlights(); } catch (e) { toast(String(e.message || e)); }
+  };
+
+  $("btn-logout").onclick = () => {
+    clearAuth();
+    toast("Вышел.");
+    showAuth();
+  };
+}
+
+(function init() {
+  bind();
+  tryAutoFillTelegramUsername();
+
+  const u = loadAuth();
+  if (u) showBooking(u);
+  else showAuth();
+
+  setReturnEnabled(false);
+  renderSummary();
+})();

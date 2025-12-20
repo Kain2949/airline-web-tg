@@ -4,170 +4,185 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Авиакомпания: регистрация и бронирование</title>
-  <link rel="stylesheet" href="style2.css" />
+  <link rel="stylesheet" href="style2.css?v=2" />
 </head>
 <body>
-  <div class="stars"></div>
-  <div class="wrap">
+  <div class="bg"></div>
+
+  <main class="wrap">
     <header class="top">
-      <button class="pill" id="langBtn">EN</button>
-      <h1>Авиакомпания: регистрация и бронирование</h1>
-      <div class="right">
-        <button class="btn ghost" id="myFlightsBtn" disabled>Мои рейсы</button>
-        <button class="btn ghost" id="logoutBtn" disabled>Выйти</button>
-      </div>
+      <div class="pill">EN</div>
+      <h1>Авиакомпания:<br/>регистрация и бронирование</h1>
+      <p class="sub">Сначала /start у бота → потом коды → потом бронирование.</p>
     </header>
 
-    <main class="card">
+    <section id="view-auth" class="card">
+      <div class="tabs">
+        <button id="tab-register" class="tab active" type="button">Регистрация</button>
+        <button id="tab-login" class="tab" type="button">Вход</button>
+      </div>
 
-      <!-- AUTH -->
-      <section id="authSection">
-        <h2>Вход / регистрация</h2>
-
-        <div class="hint">
-          Сначала открой бота и нажми <b>/start</b>, иначе он не сможет присылать коды.
-        </div>
-
-        <label class="lbl">Telegram @username</label>
-        <input id="username" class="inp" placeholder="@username" />
-
-        <div class="row">
-          <button class="btn" id="sendLoginCode">Получить код для входа</button>
-          <button class="btn" id="sendRegisterCode">Получить код для регистрации</button>
-        </div>
-
-        <div class="row">
-          <input id="codeAuth" class="inp" placeholder="Код из Telegram (6 цифр)" />
-          <button class="btn" id="verifyLogin">Войти</button>
-        </div>
-
-        <div class="subcard" id="regForm" style="display:none;">
-          <h3>Данные пассажира (регистрация)</h3>
-
-          <div class="grid3">
-            <div>
-              <label class="lbl">Фамилия</label>
-              <input id="lastName" class="inp" placeholder="Иванов" />
-            </div>
-            <div>
-              <label class="lbl">Имя</label>
-              <input id="firstName" class="inp" placeholder="Пётр" />
-            </div>
-            <div>
-              <label class="lbl">Отчество</label>
-              <input id="middleName" class="inp" placeholder="Николаевич" />
-            </div>
-          </div>
-
-          <div class="grid2">
-            <div>
-              <label class="lbl">Паспорт</label>
-              <input id="passport" class="inp" placeholder="MP4******994" />
-            </div>
-            <div>
-              <label class="lbl">Телефон</label>
-              <input id="phone" class="inp" placeholder="+375XXXXXXXXX" />
-            </div>
-          </div>
-
-          <label class="lbl">E-mail</label>
-          <input id="email" class="inp" placeholder="example@mail.com" />
-
-          <div class="row">
-            <input id="codeReg" class="inp" placeholder="Код регистрации (6 цифр)" />
-            <button class="btn" id="finishRegister">Завершить регистрацию</button>
-          </div>
-        </div>
-
-        <div class="err" id="authErr" style="display:none;"></div>
-      </section>
-
-      <!-- SEARCH -->
-      <section id="searchSection" style="display:none;">
-        <h2>Поиск рейса</h2>
+      <div id="pane-register" class="pane">
+        <h2>Регистрация</h2>
 
         <div class="grid2">
-          <div>
-            <label class="lbl">Откуда</label>
-            <input id="fromCity" class="inp" placeholder="Minsk" />
-          </div>
-          <div>
-            <label class="lbl">Куда</label>
-            <input id="toCity" class="inp" placeholder="Warsaw" />
-          </div>
-        </div>
+          <label class="field">
+            <span>Telegram @username</span>
+            <input id="reg-username" placeholder="@username" autocomplete="username" />
+            <small>Если это Telegram WebApp — username подхватится сам.</small>
+          </label>
 
-        <div class="grid2">
-          <div>
-            <label class="lbl">Дата туда</label>
-            <input id="dateOut" class="inp" placeholder="YYYY-MM-DD" />
+          <div class="hint">
+            Без <b>/start</b> бот не знает, куда тебе писать. Да, так работает Telegram.
           </div>
-          <div>
-            <label class="lbl">Дата назад (или прочерк)</label>
-            <input id="dateBack" class="inp" placeholder="YYYY-MM-DD или -" />
-          </div>
+
+          <label class="field">
+            <span>Фамилия</span>
+            <input id="reg-last" placeholder="Ivanov" />
+          </label>
+          <label class="field">
+            <span>Имя</span>
+            <input id="reg-first" placeholder="Petr" />
+          </label>
+
+          <label class="field">
+            <span>Отчество (можно пусто)</span>
+            <input id="reg-middle" placeholder="Nikolaevich" />
+          </label>
+
+          <label class="field">
+            <span>Серия и номер паспорта</span>
+            <input id="reg-passport" placeholder="AA0000000" />
+          </label>
+
+          <label class="field">
+            <span>Телефон</span>
+            <input id="reg-phone" placeholder="+375XXXXXXXXX" />
+          </label>
+
+          <label class="field">
+            <span>E-mail</span>
+            <input id="reg-email" placeholder="example@mail.com" />
+          </label>
         </div>
 
         <div class="row">
-          <button class="btn" id="searchBtn">Найти рейсы</button>
+          <button id="reg-get-code" class="btn" type="button">Получить код</button>
+          <input id="reg-code" class="code" placeholder="000000" inputmode="numeric" maxlength="6" />
+          <button id="reg-confirm" class="btn primary" type="button">Подтвердить регистрацию</button>
+        </div>
+      </div>
+
+      <div id="pane-login" class="pane hidden">
+        <h2>Вход</h2>
+
+        <label class="field">
+          <span>Telegram @username</span>
+          <input id="login-username" placeholder="@username" autocomplete="username" />
+          <small>Если уже регался — просто подтверждаешь вход кодом.</small>
+        </label>
+
+        <div class="row">
+          <button id="login-get-code" class="btn" type="button">Получить код</button>
+          <input id="login-code" class="code" placeholder="000000" inputmode="numeric" maxlength="6" />
+          <button id="login-confirm" class="btn primary" type="button">Войти</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-booking" class="card hidden">
+      <div class="booking-top">
+        <div>
+          <h2>Бронирование</h2>
+          <p class="sub2">Ты в системе как <b id="whoami">@username</b></p>
+        </div>
+        <div class="row">
+          <button id="btn-my" class="btn" type="button">Мои рейсы</button>
+          <button id="btn-logout" class="btn danger" type="button">Выйти</button>
+        </div>
+      </div>
+
+      <div class="search">
+        <div class="grid4">
+          <label class="field">
+            <span>Страна отправления</span>
+            <input id="from-country" placeholder="Belarus" />
+          </label>
+          <label class="field">
+            <span>Город отправления</span>
+            <input id="from-city" placeholder="Minsk" />
+          </label>
+          <label class="field">
+            <span>Страна прибытия</span>
+            <input id="to-country" placeholder="Poland" />
+          </label>
+          <label class="field">
+            <span>Город прибытия</span>
+            <input id="to-city" placeholder="Warsaw" />
+          </label>
+
+          <label class="field">
+            <span>Дата туда</span>
+            <input id="date-out" type="date" />
+          </label>
+
+          <label class="field inline">
+            <span class="inline-label">
+              <input id="has-return" type="checkbox" />
+              Дата назад
+            </span>
+            <input id="date-back" type="date" disabled />
+          </label>
         </div>
 
-        <div class="subcard" id="resultsBox" style="display:none;">
-          <h3>Рейсы туда</h3>
-          <div id="outboundList" class="list"></div>
+        <div class="row">
+          <button id="btn-search" class="btn primary" type="button">Найти рейсы</button>
+          <span class="muted">Выбор рейса → выбор места → код → бронь.</span>
+        </div>
+      </div>
 
-          <div id="returnBlock" style="display:none;">
-            <h3>Рейсы назад</h3>
-            <div id="returnList" class="list"></div>
+      <div id="results" class="results hidden">
+        <div class="split">
+          <div class="col">
+            <h3>Рейсы туда</h3>
+            <div id="list-out" class="list"></div>
+          </div>
+          <div class="col">
+            <h3 id="back-title" class="muted">Рейсы назад</h3>
+            <div id="list-back" class="list"></div>
           </div>
         </div>
 
-        <div class="err" id="searchErr" style="display:none;"></div>
-      </section>
-
-      <!-- SEATS -->
-      <section id="seatsSection" style="display:none;">
-        <h2>Выбор места</h2>
-        <div class="hint" id="chosenFlightHint"></div>
-
-        <div class="row">
-          <button class="btn ghost" id="backToSearch">Назад к поиску</button>
-          <button class="btn ghost" id="refreshSeats">Обновить места</button>
+        <div class="split">
+          <div class="col">
+            <h3>Места (туда)</h3>
+            <div id="seats-out" class="seats"></div>
+          </div>
+          <div class="col">
+            <h3 id="seats-back-title" class="muted">Места (назад)</h3>
+            <div id="seats-back" class="seats"></div>
+          </div>
         </div>
 
-        <div id="seatMap" class="seatmap"></div>
-
-        <div class="row">
-          <div class="pill2">Выбрано: <b id="chosenSeat">—</b></div>
-          <div class="pill2">Цена: <b id="chosenPrice">—</b> USD</div>
-        </div>
-
-        <div class="subcard">
+        <div class="confirm">
+          <div class="summary" id="summary"></div>
           <div class="row">
-            <button class="btn" id="sendBookingCode" disabled>Получить код для бронирования</button>
-          </div>
-          <div class="row">
-            <input id="codeBook" class="inp" placeholder="Код бронирования (6 цифр)" />
-            <button class="btn" id="confirmBooking" disabled>Подтвердить бронь</button>
+            <button id="book-get-code" class="btn" type="button">Получить код для бронирования</button>
+            <input id="book-code" class="code" placeholder="000000" inputmode="numeric" maxlength="6" />
+            <button id="book-confirm" class="btn primary" type="button">Подтвердить бронирование</button>
           </div>
         </div>
+      </div>
 
-        <div class="err" id="seatErr" style="display:none;"></div>
-      </section>
+      <div id="my" class="my hidden">
+        <h3>Мои рейсы</h3>
+        <div id="my-list" class="list"></div>
+      </div>
+    </section>
 
-      <!-- MY FLIGHTS -->
-      <section id="myFlightsSection" style="display:none;">
-        <h2>Мои рейсы</h2>
-        <div class="row">
-          <button class="btn ghost" id="backFromMyFlights">Назад</button>
-        </div>
-        <div id="myFlightsList" class="list"></div>
-        <div class="err" id="myFlightsErr" style="display:none;"></div>
-      </section>
+    <div id="toast" class="toast hidden"></div>
+  </main>
 
-    </main>
-  </div>
-
-  <script src="script.js"></script>
+  <script src="script.js?v=2"></script>
 </body>
 </html>
