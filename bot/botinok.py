@@ -3,100 +3,46 @@ import re
 import json
 import time
 import uuid
-import math
 import random
 import sqlite3
 import threading
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, date
 
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import uvicorn
 
+import uvicorn
 
 # =========================
 # CONFIG
 # =========================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-DEFAULT_DB_PATH = PROJECT_ROOT / "airline_lab.db"   # один общий файл БД
-DB_PATH = Path(os.getenv("DB_PATH", str(DEFAULT_DB_PATH))).resolve()
+DEFAULT_DB_PATH = PROJECT_ROOT / "airline_lab.db"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+DB_PATH = Path(os.getenv("DB_PATH", str(DEFAULT_DB_PATH))).resolve()
 
-API_HOST = os.getenv("API_HOST", "0.0.0.0").strip()
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "1488"))
 
+# polling DB for pending code-requests
 POLL_SECONDS = float(os.getenv("BOT_POLL_SECONDS", "2.0"))
-PENDING_TTL_MINUTES = int(os.getenv("PENDING_TTL_MINUTES", "15"))
 
-# GitHub Pages домен (чтобы не душить CORS)
-DEFAULT_ALLOWED_ORIGINS = [
-    "https://kain2949.github.io",
-    "https://*.github.io",
-    "https://*.ngrok-free.dev",
-]
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").strip()
-
-
-# =========================
-# UTILS
-# =========================
-
-def now_utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-def normalize_username(s: str) -> str:
-    s = (s or "").strip()
-    if not s:
-        return ""
-    if not s.startswith("@"):
-        s = "@" + s
-    return s
-
-def gen_code() -> str:
-    return f"{random.randint(0, 999999):06d}"
-
-def mask_passport(p: str) -> str:
-    p = (p or "").strip()
-    if not p:
-        return ""
-    if len(p) <= 6:
-        if len(p) <= 2:
-            return "*" * len(p)
-        return p[0] + "*" * (len(p) - 2) + p[-1]
-    return p[:3] + "*" * (len(p) - 6) + p[-3:]
-
-def parse_birth_date(s: str) -> str:
-    s = (s or "").strip()
-    if not s:
-        return ""
-    # YYYY-MM-DD
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
-        return s
-    # DD.MM.YYYY
-    if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", s):
-        dd, mm, yyyy = s.split(".")
-        return f"{yyyy}-{mm}-{dd}"
-    return s  # оставим как есть, но лучше не надо
-
+REQUIRE_USERNAME = True  # require telegram username for /start mapping
 
 # =========================
 # DB
 # =========================
+
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 def db_connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
@@ -106,34 +52,22 @@ def db_connect() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 
-def table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        (name,)
-    ).fetchone()
-    return row is not None
+def normalize_username(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return ""
+    if not s.startswith("@"):
+        s = "@" + s
+    return s.lower()
 
-def passengers_schema_ok(conn: sqlite3.Connection) -> bool:
-    if not table_exists(conn, "passengers"):
-        return True
-    cols = conn.execute("PRAGMA table_info(passengers);").fetchall()
-    for c in cols:
-        if c["name"] == "passenger_id":
-            t = (c["type"] or "").upper()
-            return "TEXT" in t
-    return False
+def gen_code() -> str:
+    return f"{random.randint(0, 999999):06d}"
 
 def db_init() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = db_connect()
     try:
-        # Если пассажиры были INT — сносим passengers+tickets и делаем нормально (как ты хотел)
-        if not passengers_schema_ok(conn):
-            conn.execute("DROP TABLE IF EXISTS tickets;")
-            conn.execute("DROP TABLE IF EXISTS passengers;")
-            conn.commit()
-
-        # ===== Telegram tables =====
+        # ---- telegram mapping ----
         conn.execute("""
         CREATE TABLE IF NOT EXISTS tg_users (
             username    TEXT PRIMARY KEY,
@@ -149,86 +83,72 @@ def db_init() -> None:
         CREATE TABLE IF NOT EXISTS tg_code_requests (
             request_id  TEXT PRIMARY KEY,
             username    TEXT NOT NULL,
-            kind        TEXT NOT NULL,   -- 'register' | 'booking'
+            purpose     TEXT NOT NULL,   -- 'register' | 'login' | 'booking'
             code        TEXT,
             status      TEXT NOT NULL,   -- 'pending' | 'sent' | 'used' | 'cancelled'
-            payload     TEXT,
+            payload     TEXT,            -- JSON string
             created_at  TEXT NOT NULL,
             sent_at     TEXT,
             used_at     TEXT
         );
         """)
-
-        conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tg_code_pending
-        ON tg_code_requests(status, created_at);
-        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tg_code_pending ON tg_code_requests(status, created_at);")
 
         conn.execute("""
         CREATE TABLE IF NOT EXISTS tg_notifications (
             notif_id    INTEGER PRIMARY KEY AUTOINCREMENT,
             username    TEXT NOT NULL,
-            kind        TEXT NOT NULL,   -- 'registration_success' | 'booking_success'
+            kind        TEXT NOT NULL,
             message     TEXT,
             payload     TEXT,
-            status      TEXT NOT NULL,   -- 'pending' | 'sent'
+            status      TEXT NOT NULL, -- pending/sent
             created_at  TEXT NOT NULL,
             sent_at     TEXT
         );
         """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tg_notif_pending ON tg_notifications(status, created_at);")
 
-        conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tg_notif_pending
-        ON tg_notifications(status, created_at);
-        """)
-
-        # ===== Airline schema =====
+        # ---- airline domain ----
         conn.execute("""
         CREATE TABLE IF NOT EXISTS ticket_statuses (
-            status_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            status_id   INTEGER PRIMARY KEY,
             status_name TEXT NOT NULL UNIQUE
         );
         """)
 
+        # planes: seat_capacity only 60/120/180
         conn.execute("""
         CREATE TABLE IF NOT EXISTS planes (
-            plane_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            model            TEXT NOT NULL,
-            manufacture_year INTEGER NOT NULL,
-            seat_capacity    INTEGER NOT NULL
+            plane_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            model             TEXT NOT NULL,
+            manufacture_year  INTEGER NOT NULL,
+            seat_capacity     INTEGER NOT NULL
         );
         """)
 
         conn.execute("""
         CREATE TABLE IF NOT EXISTS flights (
-            flight_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-            plane_id       INTEGER NOT NULL,
-            flight_number  TEXT NOT NULL,
-            departure_city TEXT NOT NULL,
-            arrival_city   TEXT NOT NULL,
-            flight_date    TEXT NOT NULL, -- YYYY-MM-DD
-            flight_time    TEXT NOT NULL, -- HH:MM
-            FOREIGN KEY (plane_id) REFERENCES planes(plane_id)
+            flight_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            plane_id        INTEGER NOT NULL,
+            flight_number   TEXT NOT NULL,
+            departure_city  TEXT NOT NULL,
+            arrival_city    TEXT NOT NULL,
+            flight_date     TEXT NOT NULL,  -- YYYY-MM-DD
+            flight_time     TEXT NOT NULL,  -- HH:MM
+            FOREIGN KEY(plane_id) REFERENCES planes(plane_id)
         );
         """)
 
-        conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_flights_date
-        ON flights(flight_date);
-        """)
-
+        # IMPORTANT: passenger_id is telegram username (TEXT)
         conn.execute("""
         CREATE TABLE IF NOT EXISTS passengers (
-            passenger_id TEXT PRIMARY KEY,  -- @telegram_username
-            last_name    TEXT NOT NULL,
-            first_name   TEXT NOT NULL,
-            middle_name  TEXT,
-            passport_no  TEXT NOT NULL,
-            birth_date   TEXT NOT NULL,
-            phone        TEXT NOT NULL,
-            email        TEXT NOT NULL,
-            created_at   TEXT NOT NULL,
-            updated_at   TEXT NOT NULL
+            passenger_id  TEXT PRIMARY KEY,  -- '@username'
+            last_name     TEXT NOT NULL,
+            first_name    TEXT NOT NULL,
+            middle_name   TEXT,
+            passport_no   TEXT NOT NULL,
+            phone         TEXT NOT NULL,
+            email         TEXT NOT NULL
         );
         """)
 
@@ -236,97 +156,78 @@ def db_init() -> None:
         CREATE TABLE IF NOT EXISTS tickets (
             ticket_id     INTEGER PRIMARY KEY AUTOINCREMENT,
             flight_id     INTEGER NOT NULL,
-            passenger_id  TEXT NOT NULL,       -- @telegram_username
+            passenger_id  TEXT NOT NULL,      -- '@username'
             status_id     INTEGER NOT NULL,
-            seat_no       TEXT NOT NULL,
+            seat_no       TEXT NOT NULL,      -- A1..F30
             price_usd     REAL NOT NULL,
             created_at    TEXT NOT NULL,
-            updated_at    TEXT NOT NULL,
-            UNIQUE(flight_id, seat_no),
-            FOREIGN KEY (flight_id) REFERENCES flights(flight_id),
-            FOREIGN KEY (passenger_id) REFERENCES passengers(passenger_id),
-            FOREIGN KEY (status_id) REFERENCES ticket_statuses(status_id)
+            FOREIGN KEY(flight_id) REFERENCES flights(flight_id),
+            FOREIGN KEY(passenger_id) REFERENCES passengers(passenger_id),
+            FOREIGN KEY(status_id) REFERENCES ticket_statuses(status_id),
+            UNIQUE(flight_id, seat_no)
         );
         """)
 
-        conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_tickets_passenger
-        ON tickets(passenger_id);
-        """)
-
         conn.commit()
 
-        seed_defaults(conn)
-
+        # seed statuses
+        conn.execute("INSERT OR IGNORE INTO ticket_statuses(status_id, status_name) VALUES (1,'reserved');")
+        conn.execute("INSERT OR IGNORE INTO ticket_statuses(status_id, status_name) VALUES (2,'purchased');")
         conn.commit()
+
+        # seed planes if empty
+        cnt_planes = conn.execute("SELECT COUNT(*) AS c FROM planes;").fetchone()["c"]
+        if cnt_planes == 0:
+            conn.execute("INSERT INTO planes(model, manufacture_year, seat_capacity) VALUES ('Airbus A60', 2014, 60);")
+            conn.execute("INSERT INTO planes(model, manufacture_year, seat_capacity) VALUES ('Boeing B120', 2017, 120);")
+            conn.execute("INSERT INTO planes(model, manufacture_year, seat_capacity) VALUES ('Boeing B180', 2019, 180);")
+            conn.commit()
+
+        # seed flights if empty
+        cnt_flights = conn.execute("SELECT COUNT(*) AS c FROM flights;").fetchone()["c"]
+        if cnt_flights == 0:
+            plane_ids = [r["plane_id"] for r in conn.execute("SELECT plane_id FROM planes ORDER BY plane_id;").fetchall()]
+            # простая “демка” на ближайшие 10 дней
+            cities = [
+                ("Minsk", "Warsaw"),
+                ("Warsaw", "Minsk"),
+                ("Minsk", "Vilnius"),
+                ("Vilnius", "Minsk"),
+                ("Warsaw", "Berlin"),
+                ("Berlin", "Warsaw"),
+            ]
+            today = date.today()
+            n = 1
+            for d in range(0, 10):
+                dt = today.fromordinal(today.toordinal() + d).isoformat()
+                for (a, b) in cities:
+                    plane_id = random.choice(plane_ids)
+                    hh = random.choice(["07:20","10:10","13:45","16:30","19:05","21:40"])
+                    fn = f"SU-{100+n}"
+                    n += 1
+                    conn.execute("""
+                        INSERT INTO flights(plane_id, flight_number, departure_city, arrival_city, flight_date, flight_time)
+                        VALUES(?,?,?,?,?,?);
+                    """, (plane_id, fn, a, b, dt, hh))
+            conn.commit()
+
     finally:
         conn.close()
 
-def seed_defaults(conn: sqlite3.Connection) -> None:
-    # statuses
-    for name in ["PENDING", "CONFIRMED", "CANCELLED"]:
-        conn.execute("INSERT OR IGNORE INTO ticket_statuses(status_name) VALUES (?);", (name,))
-
-    # planes
-    planes_count = conn.execute("SELECT COUNT(*) AS c FROM planes;").fetchone()["c"]
-    if planes_count == 0:
-        conn.execute("INSERT INTO planes(model, manufacture_year, seat_capacity) VALUES ('Airbus A320', 2014, 180);")
-        conn.execute("INSERT INTO planes(model, manufacture_year, seat_capacity) VALUES ('Boeing 737-800', 2012, 189);")
-        conn.execute("INSERT INTO planes(model, manufacture_year, seat_capacity) VALUES ('Embraer E195', 2016, 120);")
-
-    flights_count = conn.execute("SELECT COUNT(*) AS c FROM flights;").fetchone()["c"]
-    if flights_count == 0:
-        plane_ids = [r["plane_id"] for r in conn.execute("SELECT plane_id FROM planes;").fetchall()]
-        routes = [
-            ("Minsk", "Warsaw"),
-            ("Minsk", "Vilnius"),
-            ("Minsk", "Istanbul"),
-            ("Warsaw", "Berlin"),
-            ("Vilnius", "Riga"),
-        ]
-        base = datetime.now().date()
-        for i in range(12):
-            d = (base + timedelta(days=i % 7)).isoformat()
-            hh = 7 + (i * 2) % 12
-            mm = "00" if i % 2 == 0 else "30"
-            dep, arr = routes[i % len(routes)]
-            plane_id = plane_ids[i % len(plane_ids)]
-            fn = f"JP{100 + i}"
-            conn.execute("""
-                INSERT INTO flights(plane_id, flight_number, departure_city, arrival_city, flight_date, flight_time)
-                VALUES (?, ?, ?, ?, ?, ?);
-            """, (plane_id, fn, dep, arr, d, f"{hh:02d}:{mm}"))
-
-def status_id(conn: sqlite3.Connection, name: str) -> int:
-    row = conn.execute("SELECT status_id FROM ticket_statuses WHERE status_name=?;", (name,)).fetchone()
-    if not row:
-        raise RuntimeError(f"Missing status {name}")
-    return int(row["status_id"])
-
-def cleanup_expired_pending(conn: sqlite3.Connection) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=PENDING_TTL_MINUTES)
-    cutoff_iso = cutoff.replace(microsecond=0).isoformat()
-
-    # ticket pending -> cancel (чтобы места не висели вечно)
-    sid_pending = status_id(conn, "PENDING")
-    sid_cancelled = status_id(conn, "CANCELLED")
-
-    conn.execute("""
-        UPDATE tickets
-        SET status_id=?, updated_at=?
-        WHERE status_id=? AND created_at < ?;
-    """, (sid_cancelled, now_utc_iso(), sid_pending, cutoff_iso))
-
-    # code requests pending/sent старые -> cancelled
-    conn.execute("""
-        UPDATE tg_code_requests
-        SET status='cancelled'
-        WHERE status IN ('pending','sent') AND created_at < ?;
-    """, (cutoff_iso,))
-
+def seat_list_for_capacity(cap: int) -> list[str]:
+    # 60/120/180 => 6 letters (A..F) x numbers (10/20/30)
+    if cap not in (60, 120, 180):
+        raise ValueError("seat_capacity must be 60/120/180")
+    nums = cap // 6
+    letters = ["A","B","C","D","E","F"]
+    seats = []
+    for num in range(1, nums + 1):
+        for letter in letters:
+            seats.append(f"{letter}{num}")
+    return seats
 
 # =========================
-# TELEGRAM BOT
+# BOT PART
 # =========================
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -334,10 +235,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
 
     username = normalize_username(u.username or "")
-    if not username:
+    if REQUIRE_USERNAME and not username:
         await update.message.reply_text(
-            "Слушай… у тебя нет @username.\n"
-            "Telegram → Settings → Username. Поставь его и снова жми /start.",
+            "У тебя не задан @username в Telegram.\n"
+            "Настройки → Username → поставь, потом снова /start.",
         )
         return
 
@@ -346,7 +247,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ts = now_utc_iso()
         conn.execute("""
             INSERT INTO tg_users(username, chat_id, first_name, last_name, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES(?,?,?,?,?,?)
             ON CONFLICT(username) DO UPDATE SET
                 chat_id=excluded.chat_id,
                 first_name=excluded.first_name,
@@ -358,88 +259,51 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         conn.close()
 
     await update.message.reply_text(
-        "Ок. Привязала ✅\n"
-        "Теперь возвращайся в веб-приложение и запрашивай коды.",
+        "Готово. Я тебя привязала ✅\n"
+        "Теперь иди в веб-приложение и запрашивай коды подтверждения.",
     )
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "/start — привязать Telegram к сервису\n"
+        "/start — привязать аккаунт Telegram\n"
         "/help — помощь\n\n"
-        "Коды подтверждения приходят сюда автоматически."
+        "Коды приходят сюда автоматически, когда ты жмёшь кнопки в веб-приложении."
     )
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     txt = (update.message.text or "").strip()
     if re.fullmatch(r"\d{6}", txt):
-        await update.message.reply_text(
-            "Код красивый, спору нет.\n"
-            "Но вводится он в веб-приложении, а не мне в личку 😈"
-        )
+        await update.message.reply_text("Код вводи в веб-приложении. Тут я его не принимаю 😈")
         return
-    await update.message.reply_text("Я бот подтверждений. /start — если ещё не привязан.")
-
+    await update.message.reply_text("Я бот кодов. Жми /start, если ещё не привязан.")
 
 async def process_pending_codes(app: Application) -> None:
     conn = db_connect()
     try:
-        cleanup_expired_pending(conn)
-
         rows = conn.execute("""
-            SELECT request_id, username, kind, payload
+            SELECT request_id, username, purpose
             FROM tg_code_requests
             WHERE status='pending'
             ORDER BY created_at
-            LIMIT 30;
+            LIMIT 20;
         """).fetchall()
 
         for r in rows:
             req_id = r["request_id"]
             username = normalize_username(r["username"])
-            kind = (r["kind"] or "").strip()
-            payload = (r["payload"] or "").strip()
+            purpose = (r["purpose"] or "").strip()
 
-            user = conn.execute(
-                "SELECT chat_id FROM tg_users WHERE username=?",
-                (username,)
-            ).fetchone()
-
+            user = conn.execute("SELECT chat_id FROM tg_users WHERE username=?;", (username,)).fetchone()
             if not user:
-                # не нажал /start
-                continue
+                continue  # user didn't /start
 
             code = gen_code()
 
-            extra = ""
-            if payload:
-                try:
-                    obj = json.loads(payload)
-                except Exception:
-                    obj = {}
-                if kind == "booking":
-                    extra = ""
-                    t_id = obj.get("ticket_id")
-                    if t_id:
-                        row = conn.execute("""
-                            SELECT f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time, t.seat_no
-                            FROM tickets t
-                            JOIN flights f ON f.flight_id=t.flight_id
-                            WHERE t.ticket_id=?;
-                        """, (int(t_id),)).fetchone()
-                        if row:
-                            extra = (
-                                f"\n\nРейс: <b>{row['flight_number']}</b>\n"
-                                f"{row['departure_city']} → {row['arrival_city']}\n"
-                                f"Дата/время: <b>{row['flight_date']} {row['flight_time']}</b>\n"
-                                f"Место: <b>{row['seat_no']}</b>"
-                            )
-
-            title = "Регистрация" if kind == "register" else "Бронирование" if kind == "booking" else kind
+            title = {"register": "Регистрация", "login": "Вход", "booking": "Бронирование"}.get(purpose, purpose)
             msg = (
                 f"Код подтверждения: <b>{code}</b>\n"
-                f"Тип: <b>{title}</b>\n"
+                f"Тип: <b>{title}</b>\n\n"
                 f"Введи этот код в веб-приложении."
-                f"{extra}"
             )
 
             try:
@@ -460,549 +324,432 @@ async def process_pending_codes(app: Application) -> None:
     finally:
         conn.close()
 
-async def process_pending_notifications(app: Application) -> None:
-    conn = db_connect()
-    try:
-        rows = conn.execute("""
-            SELECT notif_id, username, kind, message, payload
-            FROM tg_notifications
-            WHERE status='pending'
-            ORDER BY created_at
-            LIMIT 30;
-        """).fetchall()
-
-        for r in rows:
-            notif_id = int(r["notif_id"])
-            username = normalize_username(r["username"])
-            kind = (r["kind"] or "").strip()
-            message = (r["message"] or "").strip()
-            payload = (r["payload"] or "").strip()
-
-            user = conn.execute(
-                "SELECT chat_id FROM tg_users WHERE username=?",
-                (username,)
-            ).fetchone()
-            if not user:
-                continue
-
-            if not message and payload:
-                try:
-                    obj = json.loads(payload)
-                except Exception:
-                    obj = {}
-
-                if kind == "registration_success":
-                    message = (
-                        "✅ Регистрация успешна.\n\n"
-                        f"ФИО: <b>{obj.get('fio','')}</b>\n"
-                        f"Дата рождения: <b>{obj.get('birth_date','')}</b>\n"
-                        f"Паспорт: <b>{mask_passport(obj.get('passport_no',''))}</b>"
-                    )
-                elif kind == "booking_success":
-                    message = (
-                        "✅ Бронирование подтверждено.\n\n"
-                        f"Рейс: <b>{obj.get('flight_number','')}</b>\n"
-                        f"{obj.get('route','')}\n"
-                        f"Дата/время: <b>{obj.get('dt','')}</b>\n"
-                        f"Место: <b>{obj.get('seat_no','')}</b>\n"
-                        f"Цена: <b>${obj.get('price_usd','')}</b>"
-                    )
-                else:
-                    message = "✅ Готово."
-
-            if not message:
-                message = "✅ Готово."
-
-            try:
-                await app.bot.send_message(
-                    chat_id=int(user["chat_id"]),
-                    text=message,
-                    parse_mode=ParseMode.HTML
-                )
-            except Exception:
-                continue
-
-            conn.execute("""
-                UPDATE tg_notifications
-                SET status='sent', sent_at=?
-                WHERE notif_id=?;
-            """, (now_utc_iso(), notif_id))
-            conn.commit()
-    finally:
-        conn.close()
-
 async def background_loop(app: Application) -> None:
     while True:
         try:
             await process_pending_codes(app)
-            await process_pending_notifications(app)
         except Exception:
             pass
-        await asyncio_sleep(POLL_SECONDS)
-
-async def asyncio_sleep(seconds: float) -> None:
-    # чтобы не тянуть asyncio наверх — маленький костыль
-    import asyncio
-    await asyncio.sleep(seconds)
+        await asyncio.sleep(POLL_SECONDS)
 
 async def post_init(app: Application) -> None:
+    # will warn in PTB sometimes, but works fine
+    import asyncio
     app.create_task(background_loop(app))
-
 
 # =========================
 # API (FastAPI)
 # =========================
 
-api = FastAPI(title="Airline API", version="1.0")
+app_api = FastAPI(title="Airline API", version="1.0")
 
-if ALLOWED_ORIGINS:
-    origins = [x.strip() for x in ALLOWED_ORIGINS.split(",") if x.strip()]
-else:
-    origins = DEFAULT_ALLOWED_ORIGINS + ["*"]
-
-api.add_middleware(
+app_api.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 class AuthStartIn(BaseModel):
-    telegram_username: str
-    purpose: str  # 'register'
+    username: str
+    purpose: str  # register|login|booking
+    payload: dict | None = None
 
-class RegisterCompleteIn(BaseModel):
-    telegram_username: str
+class AuthStartOut(BaseModel):
+    request_id: str
+    status: str
+
+class AuthVerifyIn(BaseModel):
+    username: str
+    purpose: str
     code: str
+
+class PassengerIn(BaseModel):
+    username: str
     last_name: str
     first_name: str
     middle_name: str | None = ""
     passport_no: str
-    birth_date: str
     phone: str
     email: str
 
+class FlightsSearchIn(BaseModel):
+    from_city: str
+    to_city: str
+    date_out: str          # YYYY-MM-DD
+    date_back: str | None = ""  # optional or ""
+
 class BookingStartIn(BaseModel):
-    telegram_username: str
+    username: str
     flight_id: int
     seat_no: str
     price_usd: float
 
-class BookingConfirmIn(BaseModel):
-    telegram_username: str
-    code: str
+def get_latest_sent_code(conn, username: str, purpose: str):
+    return conn.execute("""
+        SELECT request_id, code, status, payload
+        FROM tg_code_requests
+        WHERE username=? AND purpose=? AND status='sent'
+        ORDER BY sent_at DESC
+        LIMIT 1;
+    """, (username, purpose)).fetchone()
 
+def ensure_passenger_exists(conn, username: str) -> None:
+    r = conn.execute("SELECT passenger_id FROM passengers WHERE passenger_id=?;", (username,)).fetchone()
+    if not r:
+        raise HTTPException(status_code=400, detail="Пассажир не зарегистрирован")
 
-def seats_for_capacity(capacity: int) -> list[str]:
-    letters = ["A", "B", "C", "D", "E", "F"]
-    res = []
-    for i in range(capacity):
-        row = i // 6 + 1
-        letter = letters[i % 6]
-        res.append(f"{row}{letter}")
-    return res
+@app_api.post("/api/auth/start", response_model=AuthStartOut)
+def api_auth_start(inp: AuthStartIn):
+    username = normalize_username(inp.username)
+    purpose = (inp.purpose or "").strip().lower()
+    if purpose not in ("register", "login", "booking"):
+        raise HTTPException(status_code=400, detail="purpose must be register/login/booking")
+    if not username:
+        raise HTTPException(status_code=400, detail="username required")
 
-def api_error(msg: str, status: int = 400) -> None:
-    raise HTTPException(status_code=status, detail=msg)
-
-
-@api.get("/health")
-def health():
-    return {"ok": True, "db": str(DB_PATH), "ts": now_utc_iso()}
-
-
-@api.post("/api/auth/start")
-def auth_start(body: AuthStartIn):
-    username = normalize_username(body.telegram_username)
-    purpose = (body.purpose or "").strip().lower()
-
-    if purpose not in ["register"]:
-        api_error("Invalid purpose", 422)
-    if not re.fullmatch(r"@[A-Za-z0-9_]{4,32}", username):
-        api_error("Некорректный @username", 422)
+    req_id = str(uuid.uuid4())
+    payload_str = json.dumps(inp.payload or {}, ensure_ascii=False)
 
     conn = db_connect()
     try:
-        cleanup_expired_pending(conn)
-
-        req_id = str(uuid.uuid4())
         conn.execute("""
-            INSERT INTO tg_code_requests(request_id, username, kind, status, payload, created_at)
-            VALUES (?, ?, 'register', 'pending', ?, ?);
-        """, (req_id, username, "", now_utc_iso()))
+            INSERT INTO tg_code_requests(request_id, username, purpose, code, status, payload, created_at)
+            VALUES(?,?,?,?,?,?,?);
+        """, (req_id, username, purpose, None, "pending", payload_str, now_utc_iso()))
         conn.commit()
-        return {"ok": True, "request_id": req_id}
     finally:
         conn.close()
 
+    return {"request_id": req_id, "status": "pending"}
 
-@api.post("/api/register/complete")
-def register_complete(body: RegisterCompleteIn):
-    username = normalize_username(body.telegram_username)
-    code = (body.code or "").strip()
+@app_api.post("/api/auth/verify")
+def api_auth_verify(inp: AuthVerifyIn):
+    username = normalize_username(inp.username)
+    purpose = (inp.purpose or "").strip().lower()
+    code = (inp.code or "").strip()
 
-    if not re.fullmatch(r"@[A-Za-z0-9_]{4,32}", username):
-        api_error("Некорректный @username", 422)
+    if purpose not in ("register", "login", "booking"):
+        raise HTTPException(status_code=400, detail="purpose must be register/login/booking")
+
     if not re.fullmatch(r"\d{6}", code):
-        api_error("Код должен быть из 6 цифр", 422)
-
-    birth = parse_birth_date(body.birth_date)
+        raise HTTPException(status_code=400, detail="code must be 6 digits")
 
     conn = db_connect()
     try:
-        cleanup_expired_pending(conn)
+        row = get_latest_sent_code(conn, username, purpose)
+        if not row:
+            raise HTTPException(status_code=400, detail="Нет отправленного кода. Нажми 'Получить код'.")
 
-        req = conn.execute("""
-            SELECT request_id
-            FROM tg_code_requests
-            WHERE username=? AND kind='register' AND status='sent' AND code=?
-            ORDER BY sent_at DESC
-            LIMIT 1;
-        """, (username, code)).fetchone()
+        if row["code"] != code:
+            raise HTTPException(status_code=400, detail="Неверный код")
 
-        if not req:
-            api_error("Неверный код или код не отправлялся. Запроси новый.", 403)
-
-        ts = now_utc_iso()
-
+        # mark used
         conn.execute("""
-            INSERT INTO passengers(passenger_id, last_name, first_name, middle_name, passport_no, birth_date, phone, email, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            UPDATE tg_code_requests
+            SET status='used', used_at=?
+            WHERE request_id=?;
+        """, (now_utc_iso(), row["request_id"]))
+        conn.commit()
+
+        # for booking we don't finalize here, booking finalize endpoint will check another code,
+        # but to keep it simple we use purpose=booking and payload stored in request itself.
+        payload = {}
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except Exception:
+            payload = {}
+
+        return {"ok": True, "payload": payload}
+
+    finally:
+        conn.close()
+
+@app_api.post("/api/passengers/register")
+def api_register_passenger(p: PassengerIn):
+    username = normalize_username(p.username)
+    if not username:
+        raise HTTPException(status_code=400, detail="username required")
+
+    conn = db_connect()
+    try:
+        # create or update passenger
+        conn.execute("""
+            INSERT INTO passengers(passenger_id, last_name, first_name, middle_name, passport_no, phone, email)
+            VALUES(?,?,?,?,?,?,?)
             ON CONFLICT(passenger_id) DO UPDATE SET
                 last_name=excluded.last_name,
                 first_name=excluded.first_name,
                 middle_name=excluded.middle_name,
                 passport_no=excluded.passport_no,
-                birth_date=excluded.birth_date,
                 phone=excluded.phone,
-                email=excluded.email,
-                updated_at=excluded.updated_at;
-        """, (
-            username,
-            (body.last_name or "").strip(),
-            (body.first_name or "").strip(),
-            (body.middle_name or "").strip(),
-            (body.passport_no or "").strip(),
-            birth,
-            (body.phone or "").strip(),
-            (body.email or "").strip(),
-            ts, ts
-        ))
-
-        conn.execute("""
-            UPDATE tg_code_requests
-            SET status='used', used_at=?
-            WHERE request_id=?;
-        """, (ts, req["request_id"]))
-
-        fio = f"{body.last_name.strip()} {body.first_name.strip()} {body.middle_name.strip()}".strip()
-
-        conn.execute("""
-            INSERT INTO tg_notifications(username, kind, message, payload, status, created_at)
-            VALUES (?, 'registration_success', '', ?, 'pending', ?);
-        """, (
-            username,
-            json.dumps({
-                "fio": fio,
-                "birth_date": birth,
-                "passport_no": body.passport_no.strip()
-            }, ensure_ascii=False),
-            ts
-        ))
-
+                email=excluded.email;
+        """, (username, p.last_name, p.first_name, p.middle_name or "", p.passport_no, p.phone, p.email))
         conn.commit()
-        return {"ok": True}
     finally:
         conn.close()
 
+    return {"ok": True}
 
-@api.get("/api/flights")
-def flights_list():
+@app_api.post("/api/flights/search")
+def api_flights_search(inp: FlightsSearchIn):
+    f = (inp.from_city or "").strip()
+    t = (inp.to_city or "").strip()
+    d_out = (inp.date_out or "").strip()
+    d_back = (inp.date_back or "").strip()
+
+    if not f or not t or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d_out):
+        raise HTTPException(status_code=400, detail="from_city/to_city/date_out required")
+
     conn = db_connect()
     try:
-        rows = conn.execute("""
+        out = conn.execute("""
             SELECT f.flight_id, f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time,
-                   p.model AS plane_model, p.seat_capacity
+                   p.seat_capacity
             FROM flights f
-            JOIN planes p ON p.plane_id=f.plane_id
-            ORDER BY f.flight_date, f.flight_time;
-        """).fetchall()
+            JOIN planes p ON p.plane_id = f.plane_id
+            WHERE f.departure_city=? AND f.arrival_city=? AND f.flight_date=?
+            ORDER BY f.flight_time;
+        """, (f, t, d_out)).fetchall()
 
-        res = []
-        for r in rows:
-            # “цена в билетах” — ок, но предложим дефолт
-            price_suggested = float(99 + (r["flight_id"] % 7) * 25)
-
-            res.append({
-                "flight_id": int(r["flight_id"]),
+        out_list = []
+        for r in out:
+            # простая цена: зависит от ёмкости, чтобы не был всегда 200
+            base = 120 if r["seat_capacity"] == 60 else 160 if r["seat_capacity"] == 120 else 200
+            price = base + random.choice([0, 10, 20, 30, 40])
+            out_list.append({
+                "flight_id": r["flight_id"],
                 "flight_number": r["flight_number"],
-                "departure_city": r["departure_city"],
-                "arrival_city": r["arrival_city"],
-                "flight_date": r["flight_date"],
-                "flight_time": r["flight_time"],
-                "plane_model": r["plane_model"],
-                "seat_capacity": int(r["seat_capacity"]),
-                "price_suggested": price_suggested
+                "from": r["departure_city"],
+                "to": r["arrival_city"],
+                "date": r["flight_date"],
+                "time": r["flight_time"],
+                "seat_capacity": r["seat_capacity"],
+                "price_usd": price
             })
 
-        return {"ok": True, "flights": res}
+        back_list = []
+        if d_back and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d_back):
+            back = conn.execute("""
+                SELECT f.flight_id, f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time,
+                       p.seat_capacity
+                FROM flights f
+                JOIN planes p ON p.plane_id = f.plane_id
+                WHERE f.departure_city=? AND f.arrival_city=? AND f.flight_date=?
+                ORDER BY f.flight_time;
+            """, (t, f, d_back)).fetchall()
+
+            for r in back:
+                base = 120 if r["seat_capacity"] == 60 else 160 if r["seat_capacity"] == 120 else 200
+                price = base + random.choice([0, 10, 20, 30, 40])
+                back_list.append({
+                    "flight_id": r["flight_id"],
+                    "flight_number": r["flight_number"],
+                    "from": r["departure_city"],
+                    "to": r["arrival_city"],
+                    "date": r["flight_date"],
+                    "time": r["flight_time"],
+                    "seat_capacity": r["seat_capacity"],
+                    "price_usd": price
+                })
+
+        return {"outbound": out_list, "return": back_list}
     finally:
         conn.close()
 
-
-@api.get("/api/flights/{flight_id}/seats")
-def flight_seats(flight_id: int):
+@app_api.get("/api/flights/{flight_id}/seats")
+def api_flight_seats(flight_id: int):
     conn = db_connect()
     try:
-        cleanup_expired_pending(conn)
-
-        row = conn.execute("""
+        f = conn.execute("""
             SELECT f.flight_id, p.seat_capacity
             FROM flights f
             JOIN planes p ON p.plane_id=f.plane_id
             WHERE f.flight_id=?;
         """, (flight_id,)).fetchone()
-        if not row:
-            api_error("Рейс не найден", 404)
+        if not f:
+            raise HTTPException(status_code=404, detail="flight not found")
 
-        cap = int(row["seat_capacity"])
-        all_seats = seats_for_capacity(cap)
+        seats = seat_list_for_capacity(int(f["seat_capacity"]))
 
-        sid_confirmed = status_id(conn, "CONFIRMED")
-        sid_pending = status_id(conn, "PENDING")
+        rows = conn.execute("""
+            SELECT t.seat_no, s.status_name
+            FROM tickets t
+            JOIN ticket_statuses s ON s.status_id=t.status_id
+            WHERE t.flight_id=?;
+        """, (flight_id,)).fetchall()
 
-        taken_rows = conn.execute("""
-            SELECT seat_no
-            FROM tickets
-            WHERE flight_id=? AND status_id IN (?, ?);
-        """, (flight_id, sid_confirmed, sid_pending)).fetchall()
+        m = {s: "free" for s in seats}
+        for r in rows:
+            st = (r["status_name"] or "").lower()
+            if st == "reserved":
+                m[r["seat_no"]] = "reserved"
+            elif st == "purchased":
+                m[r["seat_no"]] = "purchased"
+            else:
+                m[r["seat_no"]] = "reserved"
 
-        taken = sorted({t["seat_no"] for t in taken_rows})
-        available = [s for s in all_seats if s not in set(taken)]
-
-        return {"ok": True, "capacity": cap, "taken": taken, "available": available}
+        return {"seat_capacity": int(f["seat_capacity"]), "map": m}
     finally:
         conn.close()
 
-
-@api.post("/api/booking/start")
-def booking_start(body: BookingStartIn):
-    username = normalize_username(body.telegram_username)
-    seat_no = (body.seat_no or "").strip().upper()
-    price = float(body.price_usd)
-
-    if not re.fullmatch(r"@[A-Za-z0-9_]{4,32}", username):
-        api_error("Некорректный @username", 422)
-    if price <= 0:
-        api_error("Цена должна быть > 0", 422)
+@app_api.post("/api/booking/start", response_model=AuthStartOut)
+def api_booking_start(inp: BookingStartIn):
+    username = normalize_username(inp.username)
+    seat_no = (inp.seat_no or "").strip().upper()
+    if not re.fullmatch(r"[A-F]\d{1,2}", seat_no):
+        raise HTTPException(status_code=400, detail="seat_no like A1..F30")
 
     conn = db_connect()
     try:
-        cleanup_expired_pending(conn)
+        ensure_passenger_exists(conn, username)
 
-        p = conn.execute("SELECT passenger_id FROM passengers WHERE passenger_id=?;", (username,)).fetchone()
-        if not p:
-            api_error("Сначала зарегистрируйся.", 403)
-
+        # check seat exists for this plane
         f = conn.execute("""
-            SELECT f.flight_id, f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time, p.seat_capacity
+            SELECT p.seat_capacity
             FROM flights f
             JOIN planes p ON p.plane_id=f.plane_id
             WHERE f.flight_id=?;
-        """, (int(body.flight_id),)).fetchone()
+        """, (inp.flight_id,)).fetchone()
         if not f:
-            api_error("Рейс не найден", 404)
+            raise HTTPException(status_code=404, detail="flight not found")
 
-        cap = int(f["seat_capacity"])
-        valid_seats = set(seats_for_capacity(cap))
-        if seat_no not in valid_seats:
-            api_error("Некорректное место", 422)
+        seats = set(seat_list_for_capacity(int(f["seat_capacity"])))
+        if seat_no not in seats:
+            raise HTTPException(status_code=400, detail="seat not in this plane")
 
-        sid_confirmed = status_id(conn, "CONFIRMED")
-        sid_pending = status_id(conn, "PENDING")
+        # check seat free
+        busy = conn.execute("""
+            SELECT 1 FROM tickets WHERE flight_id=? AND seat_no=? LIMIT 1;
+        """, (inp.flight_id, seat_no)).fetchone()
+        if busy:
+            raise HTTPException(status_code=409, detail="seat already taken")
 
-        exists = conn.execute("""
-            SELECT ticket_id
-            FROM tickets
-            WHERE flight_id=? AND seat_no=? AND status_id IN (?, ?)
-            LIMIT 1;
-        """, (int(body.flight_id), seat_no, sid_confirmed, sid_pending)).fetchone()
-
-        if exists:
-            api_error("Место уже занято. Выбери другое.", 409)
-
-        ts = now_utc_iso()
-        conn.execute("""
-            INSERT INTO tickets(flight_id, passenger_id, status_id, seat_no, price_usd, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
-        """, (int(body.flight_id), username, sid_pending, seat_no, price, ts, ts))
-        ticket_id = conn.execute("SELECT last_insert_rowid() AS id;").fetchone()["id"]
-
+        # create code request purpose=booking with payload about booking
         req_id = str(uuid.uuid4())
+        payload = {
+            "flight_id": inp.flight_id,
+            "seat_no": seat_no,
+            "price_usd": float(inp.price_usd),
+            "username": username
+        }
         conn.execute("""
-            INSERT INTO tg_code_requests(request_id, username, kind, status, payload, created_at)
-            VALUES (?, ?, 'booking', 'pending', ?, ?);
-        """, (
-            req_id,
-            username,
-            json.dumps({"ticket_id": int(ticket_id)}, ensure_ascii=False),
-            ts
-        ))
-
+            INSERT INTO tg_code_requests(request_id, username, purpose, code, status, payload, created_at)
+            VALUES(?,?,?,?,?,?,?);
+        """, (req_id, username, "booking", None, "pending", json.dumps(payload, ensure_ascii=False), now_utc_iso()))
         conn.commit()
-
-        return {"ok": True, "request_id": req_id}
+        return {"request_id": req_id, "status": "pending"}
     finally:
         conn.close()
 
-
-@api.post("/api/booking/confirm")
-def booking_confirm(body: BookingConfirmIn):
-    username = normalize_username(body.telegram_username)
-    code = (body.code or "").strip()
-
-    if not re.fullmatch(r"@[A-Za-z0-9_]{4,32}", username):
-        api_error("Некорректный @username", 422)
-    if not re.fullmatch(r"\d{6}", code):
-        api_error("Код должен быть из 6 цифр", 422)
+@app_api.post("/api/booking/confirm")
+def api_booking_confirm(inp: AuthVerifyIn):
+    # same structure: username + code (purpose must be booking)
+    username = normalize_username(inp.username)
+    if (inp.purpose or "").strip().lower() != "booking":
+        raise HTTPException(status_code=400, detail="purpose must be booking")
 
     conn = db_connect()
     try:
-        cleanup_expired_pending(conn)
+        ensure_passenger_exists(conn, username)
 
-        req = conn.execute("""
-            SELECT request_id, payload
-            FROM tg_code_requests
-            WHERE username=? AND kind='booking' AND status='sent' AND code=?
-            ORDER BY sent_at DESC
-            LIMIT 1;
-        """, (username, code)).fetchone()
+        row = get_latest_sent_code(conn, username, "booking")
+        if not row:
+            raise HTTPException(status_code=400, detail="Нет отправленного кода бронирования")
 
-        if not req:
-            api_error("Неверный код или он устарел. Запроси новый.", 403)
+        if (row["code"] or "") != (inp.code or "").strip():
+            raise HTTPException(status_code=400, detail="Неверный код")
 
+        payload = {}
         try:
-            obj = json.loads(req["payload"] or "{}")
+            payload = json.loads(row["payload"] or "{}")
         except Exception:
-            obj = {}
+            payload = {}
 
-        ticket_id = int(obj.get("ticket_id") or 0)
-        if ticket_id <= 0:
-            api_error("Внутренняя ошибка бронирования.", 500)
+        flight_id = int(payload.get("flight_id", 0))
+        seat_no = (payload.get("seat_no", "") or "").strip().upper()
+        price_usd = float(payload.get("price_usd", 0))
 
-        sid_pending = status_id(conn, "PENDING")
-        sid_confirmed = status_id(conn, "CONFIRMED")
+        if not flight_id or not seat_no:
+            raise HTTPException(status_code=400, detail="payload corrupted")
 
-        t = conn.execute("""
-            SELECT t.ticket_id, t.flight_id, t.seat_no, t.price_usd, t.status_id,
-                   f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time
-            FROM tickets t
-            JOIN flights f ON f.flight_id=t.flight_id
-            WHERE t.ticket_id=? AND t.passenger_id=?;
-        """, (ticket_id, username)).fetchone()
+        # final check seat still free (race)
+        busy = conn.execute("SELECT 1 FROM tickets WHERE flight_id=? AND seat_no=? LIMIT 1;", (flight_id, seat_no)).fetchone()
+        if busy:
+            raise HTTPException(status_code=409, detail="Место уже заняли. Обнови места и выбери другое.")
 
-        if not t:
-            api_error("Билет не найден.", 404)
-        if int(t["status_id"]) != sid_pending:
-            api_error("Этот билет уже не в статусе ожидания.", 409)
-
-        ts = now_utc_iso()
-
-        conn.execute("""
-            UPDATE tickets
-            SET status_id=?, updated_at=?
-            WHERE ticket_id=?;
-        """, (sid_confirmed, ts, ticket_id))
-
+        # mark request used
         conn.execute("""
             UPDATE tg_code_requests
             SET status='used', used_at=?
             WHERE request_id=?;
-        """, (ts, req["request_id"]))
-
-        conn.execute("""
-            INSERT INTO tg_notifications(username, kind, message, payload, status, created_at)
-            VALUES (?, 'booking_success', '', ?, 'pending', ?);
-        """, (
-            username,
-            json.dumps({
-                "flight_number": t["flight_number"],
-                "route": f"{t['departure_city']} → {t['arrival_city']}",
-                "dt": f"{t['flight_date']} {t['flight_time']}",
-                "seat_no": t["seat_no"],
-                "price_usd": f"{float(t['price_usd']):.2f}",
-            }, ensure_ascii=False),
-            ts
-        ))
-
+        """, (now_utc_iso(), row["request_id"]))
         conn.commit()
-        return {"ok": True}
+
+        # create ticket reserved forever
+        conn.execute("""
+            INSERT INTO tickets(flight_id, passenger_id, status_id, seat_no, price_usd, created_at)
+            VALUES(?,?,?,?,?,?);
+        """, (flight_id, username, 1, seat_no, price_usd, now_utc_iso()))
+        conn.commit()
+
+        return {"ok": True, "ticket": {"flight_id": flight_id, "seat_no": seat_no, "price_usd": price_usd}}
+
     finally:
         conn.close()
 
-
-@api.get("/api/my/flights")
-def my_flights(telegram_username: str):
-    username = normalize_username(telegram_username)
-    if not re.fullmatch(r"@[A-Za-z0-9_]{4,32}", username):
-        api_error("Некорректный @username", 422)
-
+@app_api.get("/api/my-flights")
+def api_my_flights(username: str):
+    username = normalize_username(username)
     conn = db_connect()
     try:
-        sid_confirmed = status_id(conn, "CONFIRMED")
+        ensure_passenger_exists(conn, username)
         rows = conn.execute("""
-            SELECT t.ticket_id, t.seat_no, t.price_usd, t.created_at,
-                   f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time,
-                   p.model AS plane_model
+            SELECT t.ticket_id, t.seat_no, t.price_usd, s.status_name,
+                   f.flight_number, f.departure_city, f.arrival_city, f.flight_date, f.flight_time
             FROM tickets t
             JOIN flights f ON f.flight_id=t.flight_id
-            JOIN planes p ON p.plane_id=f.plane_id
-            WHERE t.passenger_id=? AND t.status_id=?
+            JOIN ticket_statuses s ON s.status_id=t.status_id
+            WHERE t.passenger_id=?
             ORDER BY f.flight_date, f.flight_time;
-        """, (username, sid_confirmed)).fetchall()
+        """, (username,)).fetchall()
 
-        items = []
+        res = []
         for r in rows:
-            items.append({
-                "ticket_id": int(r["ticket_id"]),
+            res.append({
+                "ticket_id": r["ticket_id"],
                 "flight_number": r["flight_number"],
-                "route": f"{r['departure_city']} → {r['arrival_city']}",
-                "dt": f"{r['flight_date']} {r['flight_time']}",
+                "from": r["departure_city"],
+                "to": r["arrival_city"],
+                "date": r["flight_date"],
+                "time": r["flight_time"],
                 "seat_no": r["seat_no"],
-                "plane_model": r["plane_model"],
-                "price_usd": float(r["price_usd"]),
-                "created_at": r["created_at"],
+                "status": r["status_name"],
+                "price_usd": r["price_usd"],
             })
-
-        return {"ok": True, "items": items}
+        return res
     finally:
         conn.close()
 
-
-def run_api() -> None:
-    uvicorn.run(api, host=API_HOST, port=API_PORT, log_level="info", reload=False)
-
-
-# =========================
-# MAIN
-# =========================
+def run_api_server() -> None:
+    uvicorn.run(app_api, host=API_HOST, port=API_PORT, log_level="info")
 
 def main() -> None:
     if not BOT_TOKEN:
         raise SystemExit(
             "BOT_TOKEN пустой.\n"
-            "Сначала задай переменную окружения BOT_TOKEN и запускай снова."
+            "Задай его так: set BOT_TOKEN=... (в CMD) и запускай снова."
         )
 
     db_init()
+
     print(f"[bot] DB: {DB_PATH}")
     print(f"[api] http://{API_HOST}:{API_PORT}")
 
-    # API в отдельном потоке (один файл, без server.py)
-    t = threading.Thread(target=run_api, daemon=True)
-    t.start()
+    # start FastAPI in background thread
+    th = threading.Thread(target=run_api_server, daemon=True)
+    th.start()
 
     app = (
         Application.builder()
@@ -1017,6 +764,6 @@ def main() -> None:
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-
 if __name__ == "__main__":
+    import asyncio
     main()
